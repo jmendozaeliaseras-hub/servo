@@ -1565,17 +1565,37 @@ impl TextControlElement for HTMLInputElement {
     }
 
     fn maybe_update_shared_selection(&self) {
-        let offsets = self.textinput.borrow().sorted_selection_offsets_range();
+        let (offsets, direction) = {
+            let textinput = self.textinput.borrow();
+            (
+                textinput.sorted_selection_offsets_range(),
+                textinput.selection_direction(),
+            )
+        };
         let (start, end) = (offsets.start.0, offsets.end.0);
         let range = TextByteRange::new(ByteIndex(start), ByteIndex(end));
         let enabled = self.renders_as_text_input_widget() && self.upcast::<Element>().focus_state();
 
         let mut shared_selection = self.shared_selection.borrow_mut();
-        if range == shared_selection.range && enabled == shared_selection.enabled {
+        if range == shared_selection.range &&
+            enabled == shared_selection.enabled &&
+            direction == shared_selection.direction
+        {
             return;
         }
 
+        self.owner_global()
+            .task_manager()
+            .user_interaction_task_source()
+            .queue_event(
+                self.upcast(),
+                atom!("select"),
+                EventBubbles::Bubbles,
+                EventCancelable::NotCancelable,
+            );
+
         *shared_selection = ScriptSelection {
+            direction,
             range,
             character_range: self
                 .textinput
