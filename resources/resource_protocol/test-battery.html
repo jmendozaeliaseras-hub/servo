@@ -5,210 +5,518 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy Browser Test Battery</title>
     <style>
+      /* ── Phosphor Terminal Theme ─────────────────────────────────── */
       :root {
-        --bg: #0f1117;
-        --surface: #1a1d27;
-        --border: #2a2d3a;
-        --text: #e4e4e7;
-        --muted: #71717a;
-        --pass: #22c55e;
-        --fail: #ef4444;
-        --warn: #eab308;
-        --accent: #818cf8;
+        --void: #06080c;
+        --deep: #0a0e14;
+        --panel: #0d1118;
+        --raised: #111822;
+        --edge: #1a2332;
+        --subtle: #243044;
+        --muted: #4a5f7a;
+        --text: #b8c9db;
+        --bright: #e2ecf5;
+        --phosphor: #00ff88;
+        --phosphor-dim: #00cc6a;
+        --phosphor-glow: rgba(0, 255, 136, 0.12);
+        --phosphor-trace: rgba(0, 255, 136, 0.04);
+        --alert: #ff3b4e;
+        --alert-glow: rgba(255, 59, 78, 0.12);
+        --amber: #ffb020;
+        --amber-glow: rgba(255, 176, 32, 0.12);
+        --cyan: #00d4ff;
+        --cyan-dim: #0098b8;
+        --cyan-glow: rgba(0, 212, 255, 0.08);
       }
+
+      @keyframes fadeSlideIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 0 0 var(--phosphor-glow); }
+        50% { box-shadow: 0 0 20px 2px var(--phosphor-glow); }
+      }
+      @keyframes scanLine {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100%); }
+      }
+      @keyframes countUp {
+        from { opacity: 0; transform: scale(0.6); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes borderTrace {
+        0% { border-color: var(--edge); }
+        50% { border-color: var(--cyan-dim); }
+        100% { border-color: var(--edge); }
+      }
+      @keyframes progressPulse {
+        0%, 100% { opacity: 0.6; }
+        50% { opacity: 1; }
+      }
+
       * { box-sizing: border-box; margin: 0; padding: 0; }
+
       body {
-        font-family: system-ui, -apple-system, sans-serif;
-        background: var(--bg);
+        font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        background: var(--void);
         color: var(--text);
-        line-height: 1.6;
-        padding: 2rem;
-        max-width: 960px;
+        line-height: 1.65;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      /* Subtle dot-grid background */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+          radial-gradient(circle, var(--subtle) 0.5px, transparent 0.5px);
+        background-size: 24px 24px;
+        opacity: 0.15;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* ── Top progress rail ──────────────────────────────────────── */
+      .progress-rail {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: var(--deep);
+        z-index: 100;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--phosphor), var(--cyan));
+        transition: width 0.3s ease-out;
+        box-shadow: 0 0 12px var(--phosphor-glow);
+      }
+
+      .page-wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 1040px;
         margin: 0 auto;
+        padding: 3rem 2rem 4rem;
       }
-      h1 {
-        font-size: 1.75rem;
-        margin-bottom: 0.25rem;
-      }
-      .subtitle {
-        color: var(--muted);
-        margin-bottom: 2rem;
-      }
-      h2 {
-        font-size: 1.25rem;
-        margin: 2rem 0 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid var(--border);
-      }
-      .summary-bar {
-        display: flex;
-        gap: 1.5rem;
-        padding: 1rem 1.5rem;
-        background: var(--surface);
-        border-radius: 8px;
-        border: 1px solid var(--border);
-        margin-bottom: 2rem;
-      }
-      .summary-item {
+
+      /* ── Header ─────────────────────────────────────────────────── */
+      .header {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 1.25rem;
+        margin-bottom: 2.5rem;
+        animation: fadeSlideIn 0.5s ease-out;
       }
-      .summary-count {
-        font-size: 1.5rem;
+      .header-shield {
+        width: 52px;
+        height: 52px;
+        flex-shrink: 0;
+      }
+      .header-shield svg {
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 0 8px var(--phosphor-glow));
+      }
+      .header-text h1 {
+        font-size: 1.625rem;
         font-weight: 700;
+        color: var(--bright);
+        letter-spacing: -0.02em;
       }
-      .summary-label {
+      .header-text .tagline {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.8125rem;
         color: var(--muted);
-        font-size: 0.875rem;
+        letter-spacing: 0.04em;
       }
-      .pass-color { color: var(--pass); }
-      .fail-color { color: var(--fail); }
-      .warn-color { color: var(--warn); }
-      .test-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+      .header-text .tagline .proto {
+        color: var(--cyan-dim);
+      }
+
+      /* ── Stat counters ──────────────────────────────────────────── */
+      .stats-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 2rem;
+        animation: fadeSlideIn 0.5s ease-out 0.1s both;
+      }
+      .stat-cell {
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 6px;
         padding: 1rem 1.25rem;
-        margin-bottom: 0.75rem;
+        position: relative;
+        overflow: hidden;
+      }
+      .stat-cell::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .stat-cell.active::after { opacity: 1; }
+      .stat-cell.pass-cell::after { background: var(--phosphor); }
+      .stat-cell.fail-cell::after { background: var(--alert); }
+      .stat-cell.pending-cell::after { background: var(--amber); }
+      .stat-cell.total-cell::after { background: var(--cyan); }
+      .stat-label {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.6875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        margin-bottom: 0.375rem;
+      }
+      .stat-value {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1;
+      }
+      .stat-value.pass-val { color: var(--phosphor); }
+      .stat-value.fail-val { color: var(--alert); }
+      .stat-value.pending-val { color: var(--amber); }
+      .stat-value.total-val { color: var(--cyan); }
+
+      /* ── Run controls ───────────────────────────────────────────── */
+      .controls {
         display: flex;
         align-items: center;
         gap: 1rem;
+        margin-bottom: 2rem;
+        animation: fadeSlideIn 0.5s ease-out 0.15s both;
       }
-      .test-status {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
+      .run-btn {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.875rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        padding: 0.6875rem 1.75rem;
+        border: 1px solid var(--phosphor-dim);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--phosphor);
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+      .run-btn:hover {
+        background: var(--phosphor-glow);
+        box-shadow: 0 0 16px var(--phosphor-glow);
+      }
+      .run-btn:active {
+        transform: scale(0.98);
+      }
+      .run-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+      .run-btn.running {
+        animation: borderTrace 1.5s ease-in-out infinite;
+      }
+      .run-timestamp {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      /* ── Section headers ────────────────────────────────────────── */
+      .section-head {
         display: flex;
         align-items: center;
-        justify-content: center;
-        font-size: 0.875rem;
-        flex-shrink: 0;
+        gap: 0.75rem;
+        margin: 2.5rem 0 1.25rem;
       }
-      .status-pass { background: rgba(34, 197, 94, 0.15); color: var(--pass); }
-      .status-fail { background: rgba(239, 68, 68, 0.15); color: var(--fail); }
-      .status-pending { background: rgba(113, 113, 122, 0.15); color: var(--muted); }
-      .status-running { background: rgba(234, 179, 8, 0.15); color: var(--warn); }
-      .test-info { flex: 1; }
-      .test-name { font-weight: 600; font-size: 0.9375rem; }
-      .test-detail {
-        color: var(--muted);
+      .section-head h2 {
         font-size: 0.8125rem;
-        font-family: monospace;
-        margin-top: 2px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text);
       }
-      .checklist-item {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 0.75rem 1.25rem;
+      .section-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--edge), transparent);
+      }
+      .section-count {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+        padding: 0.125rem 0.5rem;
+        border: 1px solid var(--edge);
+        border-radius: 3px;
+      }
+      .section-desc {
+        font-size: 0.8125rem;
+        color: var(--muted);
+        margin: -0.75rem 0 1.25rem;
+      }
+
+      /* ── Test cards ─────────────────────────────────────────────── */
+      .test-card {
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 5px;
+        padding: 0.875rem 1.125rem;
         margin-bottom: 0.5rem;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.875rem;
+        transition: border-color 0.3s, box-shadow 0.3s;
       }
-      .checklist-item label {
-        cursor: pointer;
+      .test-card.result-pass {
+        border-color: rgba(0, 255, 136, 0.2);
+      }
+      .test-card.result-fail {
+        border-color: rgba(255, 59, 78, 0.2);
+      }
+      .indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        transition: all 0.3s;
+      }
+      .ind-pending {
+        background: var(--subtle);
+        border: 1px solid var(--muted);
+      }
+      .ind-running {
+        background: var(--amber);
+        border: 1px solid var(--amber);
+        box-shadow: 0 0 8px var(--amber-glow);
+        animation: progressPulse 0.8s ease-in-out infinite;
+      }
+      .ind-pass {
+        background: var(--phosphor);
+        border: 1px solid var(--phosphor);
+        box-shadow: 0 0 6px var(--phosphor-glow);
+      }
+      .ind-fail {
+        background: var(--alert);
+        border: 1px solid var(--alert);
+        box-shadow: 0 0 6px var(--alert-glow);
+      }
+      .test-label {
         flex: 1;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--bright);
+      }
+      .test-output {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+        max-width: 50%;
+        text-align: right;
+        word-break: break-word;
+      }
+      .test-output.out-pass { color: var(--phosphor-dim); }
+      .test-output.out-fail { color: var(--alert); }
+
+      /* ── Manual checklist ───────────────────────────────────────── */
+      .check-row {
         display: flex;
         align-items: center;
         gap: 0.75rem;
-      }
-      .checklist-item input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        accent-color: var(--pass);
+        padding: 0.625rem 1.125rem;
+        margin-bottom: 0.375rem;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 5px;
         cursor: pointer;
+        transition: border-color 0.2s;
+      }
+      .check-row:hover {
+        border-color: var(--subtle);
+      }
+      .check-row.checked {
+        border-color: rgba(0, 255, 136, 0.15);
+      }
+      .check-row.checked .check-label {
+        color: var(--phosphor-dim);
+      }
+      .check-box {
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid var(--muted);
+        border-radius: 3px;
         flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        cursor: pointer;
       }
-      .checklist-shortcut {
-        color: var(--accent);
-        font-family: monospace;
-        font-size: 0.8125rem;
+      .check-row.checked .check-box {
+        border-color: var(--phosphor);
+        background: rgba(0, 255, 136, 0.1);
+      }
+      .check-mark {
+        display: none;
+        color: var(--phosphor);
+        font-size: 0.6875rem;
+        line-height: 1;
+      }
+      .check-row.checked .check-mark {
+        display: block;
+      }
+      .check-label {
+        flex: 1;
+        font-size: 0.875rem;
+        color: var(--text);
+        transition: color 0.2s;
+      }
+      .check-key {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.6875rem;
+        color: var(--cyan-dim);
+        padding: 0.125rem 0.5rem;
+        border: 1px solid rgba(0, 212, 255, 0.15);
+        border-radius: 3px;
         white-space: nowrap;
+        letter-spacing: 0.02em;
       }
-      .site-links {
+
+      /* ── Site links grid ────────────────────────────────────────── */
+      .sites-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
         gap: 0.5rem;
       }
-      .site-link {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+      .site-card {
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 5px;
         padding: 0.75rem 1rem;
         text-decoration: none;
-        color: var(--accent);
-        font-size: 0.875rem;
-        transition: border-color 0.15s;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        display: block;
       }
-      .site-link:hover { border-color: var(--accent); }
-      .site-link .site-desc {
+      .site-card:hover {
+        border-color: var(--cyan-dim);
+        box-shadow: 0 0 12px var(--cyan-glow);
+      }
+      .site-url {
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.8125rem;
+        color: var(--cyan);
+        word-break: break-all;
+      }
+      .site-note {
+        font-size: 0.6875rem;
         color: var(--muted);
-        font-size: 0.75rem;
-        margin-top: 2px;
+        margin-top: 0.25rem;
       }
-      button.run-btn {
-        background: var(--accent);
-        color: #fff;
-        border: none;
-        padding: 0.625rem 1.5rem;
-        border-radius: 6px;
-        font-size: 0.9375rem;
-        font-weight: 600;
-        cursor: pointer;
-        margin-bottom: 1.5rem;
-      }
-      button.run-btn:hover { opacity: 0.9; }
-      button.run-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      .timestamp {
-        color: var(--muted);
-        font-size: 0.75rem;
-        margin-top: 0.5rem;
+
+      /* ── Footer ─────────────────────────────────────────────────── */
+      .page-footer {
+        margin-top: 4rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--edge);
+        font-family: 'Consolas', 'Cascadia Code', 'SF Mono', monospace;
+        font-size: 0.6875rem;
+        color: var(--subtle);
+        display: flex;
+        justify-content: space-between;
       }
     </style>
   </head>
   <body>
-    <h1>Privacy Browser Test Battery</h1>
-    <p class="subtitle">Automated and manual verification of privacy features</p>
+    <div class="progress-rail"><div class="progress-fill" id="progress-fill"></div></div>
 
-    <div class="summary-bar">
-      <div class="summary-item">
-        <span class="summary-count pass-color" id="pass-count">0</span>
-        <span class="summary-label">Passed</span>
+    <div class="page-wrap">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-shield">
+          <svg viewBox="0 0 48 48" fill="none">
+            <path d="M24 4L6 12v12c0 11.2 7.68 21.68 18 24 10.32-2.32 18-12.8 18-24V12L24 4z"
+                  fill="rgba(0,255,136,0.06)" stroke="rgba(0,255,136,0.5)" stroke-width="1.5"/>
+            <path d="M18 24l4 4 8-8" stroke="#00ff88" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="header-text">
+          <h1>Test Battery</h1>
+          <div class="tagline"><span class="proto">servo://</span>test-battery &mdash; privacy feature diagnostics</div>
+        </div>
       </div>
-      <div class="summary-item">
-        <span class="summary-count fail-color" id="fail-count">0</span>
-        <span class="summary-label">Failed</span>
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <div class="stat-cell pass-cell" id="stat-pass">
+          <div class="stat-label">Passed</div>
+          <div class="stat-value pass-val" id="pass-count">0</div>
+        </div>
+        <div class="stat-cell fail-cell" id="stat-fail">
+          <div class="stat-label">Failed</div>
+          <div class="stat-value fail-val" id="fail-count">0</div>
+        </div>
+        <div class="stat-cell pending-cell" id="stat-pending">
+          <div class="stat-label">Pending</div>
+          <div class="stat-value pending-val" id="pending-count">0</div>
+        </div>
+        <div class="stat-cell total-cell" id="stat-total">
+          <div class="stat-label">Total</div>
+          <div class="stat-value total-val" id="total-count">0</div>
+        </div>
       </div>
-      <div class="summary-item">
-        <span class="summary-count warn-color" id="pending-count">0</span>
-        <span class="summary-label">Pending</span>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="run-btn" id="run-tests" onclick="runAllTests()">EXECUTE SCAN</button>
+        <span class="run-timestamp" id="run-time"></span>
+      </div>
+
+      <!-- Automated Tests -->
+      <div class="section-head">
+        <h2>Automated Scans</h2>
+        <span class="section-line"></span>
+        <span class="section-count" id="auto-count">10 tests</span>
+      </div>
+      <div id="auto-tests"></div>
+
+      <!-- Manual Checklist -->
+      <div class="section-head">
+        <h2>Manual Verification</h2>
+        <span class="section-line"></span>
+        <span class="section-count" id="manual-count">0 / 16</span>
+      </div>
+      <div class="section-desc">Walk through each feature. Click to mark as verified.</div>
+      <div id="manual-checklist"></div>
+
+      <!-- Site Compatibility -->
+      <div class="section-head">
+        <h2>Compatibility Targets</h2>
+        <span class="section-line"></span>
+        <span class="section-count">10 sites</span>
+      </div>
+      <div class="section-desc">Open each site in a new tab to verify rendering and privacy features.</div>
+      <div class="sites-grid" id="site-links"></div>
+
+      <div class="page-footer">
+        <span>servo privacy browser</span>
+        <span id="footer-time"></span>
       </div>
     </div>
 
-    <button class="run-btn" id="run-tests" onclick="runAllTests()">Run Automated Tests</button>
-    <p class="timestamp" id="run-time"></p>
-
-    <!-- Automated Tests -->
-    <h2>Automated Tests</h2>
-    <div id="auto-tests"></div>
-
-    <!-- Manual Checklist -->
-    <h2>Manual Feature Checklist</h2>
-    <p class="subtitle" style="margin-bottom:1rem">Walk through each feature and check it off when verified.</p>
-    <div id="manual-checklist"></div>
-
-    <!-- Site Compatibility -->
-    <h2>Site Compatibility Tests</h2>
-    <p class="subtitle" style="margin-bottom:1rem">Open each site and verify it loads and functions correctly.</p>
-    <div class="site-links" id="site-links"></div>
-
     <script>
       // ── Test definitions ─────────────────────────────────────────
+      // All data is hard-coded. No user input flows into the DOM.
 
       var autoTests = [
         {
@@ -230,44 +538,44 @@
             if (dataUrl === dataUrl2) {
               return {
                 pass: true,
-                detail: 'Canvas output is deterministic (' + dataUrl.length + ' chars). Compare at browserleaks.com/canvas.'
+                detail: 'Deterministic output (' + dataUrl.length + ' chars)'
               };
             }
-            return { pass: false, detail: 'Canvas output is non-deterministic across calls' };
+            return { pass: false, detail: 'Non-deterministic across calls' };
           }
         },
         {
           id: 'navigator-concurrency',
-          name: 'Navigator HW Concurrency Spoofing',
+          name: 'HW Concurrency Spoofing',
           run: function() {
             var cores = navigator.hardwareConcurrency;
             if (cores === 4) {
-              return { pass: true, detail: 'hardwareConcurrency = ' + cores + ' (spoofed to 4)' };
+              return { pass: true, detail: 'hardwareConcurrency = ' + cores };
             }
-            return { pass: false, detail: 'hardwareConcurrency = ' + cores + ' (expected 4 with fingerprint protection ON)' };
+            return { pass: false, detail: 'hardwareConcurrency = ' + cores + ' (expected 4)' };
           }
         },
         {
           id: 'navigator-platform',
-          name: 'Navigator Platform Check',
+          name: 'Navigator Platform',
           run: function() {
             var platform = navigator.platform;
             var ua = navigator.userAgent;
-            return { pass: true, detail: 'platform="' + platform + '", UA length=' + ua.length };
+            return { pass: true, detail: 'platform="' + platform + '"' };
           }
         },
         {
           id: 'cookie-readwrite',
-          name: 'Cookie Read/Write',
+          name: 'First-Party Cookie I/O',
           run: function() {
             var testValue = 'servo_test_' + Date.now();
             document.cookie = 'test_cookie=' + testValue + '; path=/; SameSite=Lax';
             var hasCookie = document.cookie.indexOf(testValue) !== -1;
             document.cookie = 'test_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
             if (hasCookie) {
-              return { pass: true, detail: 'First-party cookies work correctly' };
+              return { pass: true, detail: 'Write + readback OK' };
             }
-            return { pass: false, detail: 'Could not read back cookie' };
+            return { pass: false, detail: 'Cookie readback failed' };
           }
         },
         {
@@ -275,19 +583,18 @@
           name: 'Page Protocol',
           run: function() {
             var proto = location.protocol;
-            var href = location.href;
             if (proto === 'servo:') {
-              return { pass: true, detail: 'Loaded via ' + proto + ' protocol (' + href + ')' };
+              return { pass: true, detail: proto + ' protocol confirmed' };
             }
-            return { pass: true, detail: 'Protocol: ' + proto + ' (loaded from ' + href + ')' };
+            return { pass: true, detail: proto + ' (informational)' };
           }
         },
         {
           id: 'dom-element-count',
-          name: 'DOM Element Count (Ad Blocking Proxy)',
+          name: 'DOM Element Census',
           run: function() {
             var count = document.querySelectorAll('*').length;
-            return { pass: true, detail: count + ' DOM elements. On ad-heavy pages, fewer = effective blocking.' };
+            return { pass: true, detail: count + ' elements' };
           }
         },
         {
@@ -300,33 +607,33 @@
               var value = localStorage.getItem(key);
               localStorage.removeItem(key);
               if (value === 'test') {
-                return { pass: true, detail: 'localStorage read/write works' };
+                return { pass: true, detail: 'Read/write OK' };
               }
-              return { pass: false, detail: 'localStorage read-back failed' };
+              return { pass: false, detail: 'Readback mismatch' };
             } catch (e) {
-              return { pass: false, detail: 'localStorage error: ' + e.message };
+              return { pass: false, detail: e.message };
             }
           }
         },
         {
           id: 'webrtc-leak',
-          name: 'WebRTC IP Leak Check',
+          name: 'WebRTC Leak Surface',
           run: function() {
             if (typeof RTCPeerConnection === 'undefined') {
-              return { pass: true, detail: 'RTCPeerConnection not available -- no WebRTC leak possible' };
+              return { pass: true, detail: 'RTCPeerConnection absent' };
             }
-            return { pass: true, detail: 'RTCPeerConnection exists -- manual verification recommended' };
+            return { pass: true, detail: 'RTCPeerConnection exists (verify manually)' };
           }
         },
         {
           id: 'do-not-track',
-          name: 'Do Not Track Header',
+          name: 'Do Not Track (DNT)',
           run: function() {
             var dnt = navigator.doNotTrack;
             if (dnt === '1') {
-              return { pass: true, detail: 'navigator.doNotTrack = "' + dnt + '"' };
+              return { pass: true, detail: 'doNotTrack = "' + dnt + '"' };
             }
-            return { pass: false, detail: 'navigator.doNotTrack = "' + dnt + '" (expected "1")' };
+            return { pass: false, detail: 'doNotTrack = "' + dnt + '"' };
           }
         },
         {
@@ -335,82 +642,87 @@
           run: function() {
             var gpc = navigator.globalPrivacyControl;
             if (gpc === true) {
-              return { pass: true, detail: 'navigator.globalPrivacyControl = ' + gpc };
+              return { pass: true, detail: 'globalPrivacyControl = ' + gpc };
             }
-            return { pass: false, detail: 'navigator.globalPrivacyControl = ' + gpc + ' (expected true)' };
+            return { pass: false, detail: 'globalPrivacyControl = ' + gpc };
           }
         }
       ];
 
       // ── Rendering ───────────────────────────────────────────────
-      // All content below is built from hard-coded constants above.
-      // No user input flows into the DOM — safe from XSS.
 
       function renderAutoTests() {
         var container = document.getElementById('auto-tests');
         var html = '';
         for (var i = 0; i < autoTests.length; i++) {
-          var test = autoTests[i];
-          html += '<div class="test-card" id="test-' + test.id + '">' +
-            '<div class="test-status status-pending" id="status-' + test.id + '">&#x2022;</div>' +
-            '<div class="test-info">' +
-            '<div class="test-name">' + test.name + '</div>' +
-            '<div class="test-detail" id="detail-' + test.id + '">Waiting to run...</div>' +
-            '</div></div>';
+          var t = autoTests[i];
+          var delay = (i * 0.03) + 's';
+          html += '<div class="test-card" id="test-' + t.id +
+            '" style="animation: fadeSlideIn 0.4s ease-out ' + delay + ' both">' +
+            '<div class="indicator ind-pending" id="ind-' + t.id + '"></div>' +
+            '<span class="test-label">' + t.name + '</span>' +
+            '<span class="test-output" id="out-' + t.id + '">awaiting scan</span>' +
+            '</div>';
         }
         container.innerHTML = html;
       }
 
       function renderManualChecklist() {
         var items = [
-          { label: 'Bookmark star toggle', shortcut: 'Ctrl+D' },
-          { label: 'Bookmarks panel', shortcut: 'Ctrl+Shift+B' },
-          { label: 'History panel', shortcut: 'Ctrl+H' },
-          { label: 'Save page (download)', shortcut: 'Ctrl+S' },
-          { label: 'Downloads panel', shortcut: 'Ctrl+J' },
-          { label: 'Find in page', shortcut: 'Ctrl+F' },
-          { label: 'Reader mode', shortcut: 'book icon' },
-          { label: 'Settings panel', shortcut: 'gear icon' },
-          { label: 'Shield popup', shortcut: 'shield icon' },
-          { label: 'Private window', shortcut: 'Ctrl+Shift+P' },
-          { label: 'New tab page', shortcut: 'Ctrl+T' },
-          { label: 'Fullscreen toggle', shortcut: 'F11' },
-          { label: 'Reopen closed tab', shortcut: 'Ctrl+Shift+T' },
-          { label: 'Tab management', shortcut: 'Ctrl+W / Ctrl+T' },
-          { label: 'Back/Forward navigation', shortcut: 'Alt+Left/Right' },
-          { label: 'Zoom controls', shortcut: 'Ctrl+/- or Ctrl+0' }
+          { label: 'Bookmark star toggle', key: 'Ctrl+D' },
+          { label: 'Bookmarks panel', key: 'Ctrl+Shift+B' },
+          { label: 'History panel', key: 'Ctrl+H' },
+          { label: 'Save page (download)', key: 'Ctrl+S' },
+          { label: 'Downloads panel', key: 'Ctrl+J' },
+          { label: 'Find in page', key: 'Ctrl+F' },
+          { label: 'Reader mode', key: 'book icon' },
+          { label: 'Settings panel', key: 'gear icon' },
+          { label: 'Shield popup', key: 'shield icon' },
+          { label: 'Private window', key: 'Ctrl+Shift+P' },
+          { label: 'New tab page', key: 'Ctrl+T' },
+          { label: 'Fullscreen toggle', key: 'F11' },
+          { label: 'Reopen closed tab', key: 'Ctrl+Shift+T' },
+          { label: 'Tab management', key: 'Ctrl+W / Ctrl+T' },
+          { label: 'Back/Forward navigation', key: 'Alt+Left/Right' },
+          { label: 'Zoom controls', key: 'Ctrl++/- or Ctrl+0' }
         ];
         var container = document.getElementById('manual-checklist');
         var html = '';
         for (var i = 0; i < items.length; i++) {
-          html += '<div class="checklist-item"><label>' +
-            '<input type="checkbox" id="manual-' + i + '">' +
-            '<span>' + items[i].label + '</span>' +
-            '<span class="checklist-shortcut">' + items[i].shortcut + '</span>' +
-            '</label></div>';
+          var delay = (i * 0.02) + 's';
+          html += '<div class="check-row" id="chk-' + i +
+            '" onclick="toggleCheck(' + i + ')" style="animation: fadeSlideIn 0.4s ease-out ' + delay + ' both">' +
+            '<div class="check-box"><span class="check-mark">\u2713</span></div>' +
+            '<span class="check-label">' + items[i].label + '</span>' +
+            '<span class="check-key">' + items[i].key + '</span>' +
+            '</div>';
         }
         container.innerHTML = html;
+        manualTotal = items.length;
       }
 
       function renderSiteLinks() {
         var sites = [
-          { url: 'https://example.com', desc: 'Basic page load' },
-          { url: 'https://lite.duckduckgo.com', desc: 'Search engine (lite)' },
-          { url: 'https://en.wikipedia.org', desc: 'Complex layout + images' },
-          { url: 'https://news.ycombinator.com', desc: 'Simple layout, many links' },
-          { url: 'https://fark.com', desc: 'Ad-heavy site (blocking test)' },
-          { url: 'https://browserleaks.com/canvas', desc: 'Canvas fingerprint check' },
-          { url: 'https://browserleaks.com/javascript', desc: 'JS fingerprint check' },
-          { url: 'https://httpbin.org/headers', desc: 'View request headers (DNT, GPC)' },
-          { url: 'http://neverssl.com', desc: 'HTTPS upgrade test (starts as http)' },
-          { url: 'https://www.whatismybrowser.com', desc: 'User agent verification' }
+          { url: 'https://example.com', note: 'Basic page load' },
+          { url: 'https://lite.duckduckgo.com', note: 'Search engine (lite)' },
+          { url: 'https://en.wikipedia.org', note: 'Complex layout' },
+          { url: 'https://news.ycombinator.com', note: 'Dense link list' },
+          { url: 'https://fark.com', note: 'Ad-heavy (blocking test)' },
+          { url: 'https://browserleaks.com/canvas', note: 'Canvas fingerprint' },
+          { url: 'https://browserleaks.com/javascript', note: 'JS fingerprint' },
+          { url: 'https://httpbin.org/headers', note: 'Request headers' },
+          { url: 'http://neverssl.com', note: 'HTTPS upgrade test' },
+          { url: 'https://www.whatismybrowser.com', note: 'User agent check' }
         ];
         var container = document.getElementById('site-links');
         var html = '';
         for (var i = 0; i < sites.length; i++) {
           var display = sites[i].url.replace('https://', '').replace('http://', '');
-          html += '<a class="site-link" href="' + sites[i].url + '" target="_blank">' +
-            display + '<div class="site-desc">' + sites[i].desc + '</div></a>';
+          var delay = (i * 0.025) + 's';
+          html += '<a class="site-card" href="' + sites[i].url +
+            '" target="_blank" style="animation: fadeSlideIn 0.4s ease-out ' + delay + ' both">' +
+            '<div class="site-url">' + display + '</div>' +
+            '<div class="site-note">' + sites[i].note + '</div></a>';
         }
         container.innerHTML = html;
       }
@@ -421,45 +733,68 @@
       var failCount = 0;
 
       function setTestResult(test, result) {
-        var statusEl = document.getElementById('status-' + test.id);
-        var detailEl = document.getElementById('detail-' + test.id);
+        var ind = document.getElementById('ind-' + test.id);
+        var out = document.getElementById('out-' + test.id);
+        var card = document.getElementById('test-' + test.id);
         if (result.pass) {
-          statusEl.className = 'test-status status-pass';
-          statusEl.textContent = '\u2713';
+          ind.className = 'indicator ind-pass';
+          out.className = 'test-output out-pass';
+          card.className = 'test-card result-pass';
           passCount++;
         } else {
-          statusEl.className = 'test-status status-fail';
-          statusEl.textContent = '\u2717';
+          ind.className = 'indicator ind-fail';
+          out.className = 'test-output out-fail';
+          card.className = 'test-card result-fail';
           failCount++;
         }
-        detailEl.textContent = result.detail;
+        out.textContent = result.detail;
+      }
+
+      function updateStats() {
+        var pending = autoTests.length - passCount - failCount;
+        document.getElementById('pass-count').textContent = passCount;
+        document.getElementById('fail-count').textContent = failCount;
+        document.getElementById('pending-count').textContent = pending;
+
+        document.getElementById('stat-pass').className = 'stat-cell pass-cell' + (passCount > 0 ? ' active' : '');
+        document.getElementById('stat-fail').className = 'stat-cell fail-cell' + (failCount > 0 ? ' active' : '');
+        document.getElementById('stat-pending').className = 'stat-cell pending-cell' + (pending > 0 ? ' active' : '');
+
+        var pct = ((passCount + failCount) / autoTests.length) * 100;
+        document.getElementById('progress-fill').style.width = pct + '%';
       }
 
       function runAllTests() {
         var btn = document.getElementById('run-tests');
         btn.disabled = true;
-        btn.textContent = 'Running...';
+        btn.textContent = 'SCANNING...';
+        btn.className = 'run-btn running';
         passCount = 0;
         failCount = 0;
 
-        // Reset all to running state
+        document.getElementById('progress-fill').style.width = '0%';
+
         for (var i = 0; i < autoTests.length; i++) {
-          var statusEl = document.getElementById('status-' + autoTests[i].id);
-          var detailEl = document.getElementById('detail-' + autoTests[i].id);
-          statusEl.className = 'test-status status-running';
-          statusEl.textContent = '\u25cf';
-          detailEl.textContent = 'Running...';
+          var ind = document.getElementById('ind-' + autoTests[i].id);
+          var out = document.getElementById('out-' + autoTests[i].id);
+          var card = document.getElementById('test-' + autoTests[i].id);
+          ind.className = 'indicator ind-running';
+          out.className = 'test-output';
+          out.textContent = 'scanning...';
+          card.className = 'test-card';
         }
+        updateStats();
 
         var testIndex = 0;
         function runNext() {
           if (testIndex >= autoTests.length) {
-            document.getElementById('pass-count').textContent = passCount;
-            document.getElementById('fail-count').textContent = failCount;
-            document.getElementById('pending-count').textContent = autoTests.length - passCount - failCount;
-            document.getElementById('run-time').textContent = 'Last run: ' + new Date().toLocaleString();
+            updateStats();
+            var now = new Date();
+            var ts = now.toLocaleTimeString() + ' ' + now.toLocaleDateString();
+            document.getElementById('run-time').textContent = ts;
             btn.disabled = false;
-            btn.textContent = 'Run Again';
+            btn.textContent = 'EXECUTE SCAN';
+            btn.className = 'run-btn';
             return;
           }
           var test = autoTests[testIndex];
@@ -467,17 +802,40 @@
             var result = test.run();
             setTestResult(test, result);
           } catch (e) {
-            setTestResult(test, { pass: false, detail: 'Error: ' + e.message });
+            setTestResult(test, { pass: false, detail: 'ERR: ' + e.message });
           }
+          updateStats();
           testIndex++;
-          setTimeout(runNext, 10);
+          setTimeout(runNext, 60);
         }
-        setTimeout(runNext, 50);
+        setTimeout(runNext, 120);
+      }
+
+      // ── Manual checklist logic ──────────────────────────────────
+
+      var manualTotal = 0;
+      var manualChecked = 0;
+
+      function toggleCheck(i) {
+        var row = document.getElementById('chk-' + i);
+        if (row.className.indexOf('checked') !== -1) {
+          row.className = 'check-row';
+          manualChecked--;
+        } else {
+          row.className = 'check-row checked';
+          manualChecked++;
+        }
+        document.getElementById('manual-count').textContent = manualChecked + ' / ' + manualTotal;
       }
 
       // ── Initialize ──────────────────────────────────────────────
 
+      document.getElementById('total-count').textContent = autoTests.length;
       document.getElementById('pending-count').textContent = autoTests.length;
+      document.getElementById('stat-total').className = 'stat-cell total-cell active';
+      document.getElementById('auto-count').textContent = autoTests.length + ' tests';
+      document.getElementById('footer-time').textContent = new Date().toISOString().split('T')[0];
+
       renderAutoTests();
       renderManualChecklist();
       renderSiteLinks();

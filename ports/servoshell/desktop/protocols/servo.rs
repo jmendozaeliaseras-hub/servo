@@ -56,21 +56,18 @@ impl ProtocolHandler for ServoProtocolHandler {
                 context,
                 "/newtab.html",
             ),
-
             "preferences" => ResourceProtocolHandler::response_for_path(
                 request,
                 done_chan,
                 context,
                 "/preferences.html",
             ),
-
             "license" => ResourceProtocolHandler::response_for_path(
                 request,
                 done_chan,
                 context,
                 "/license.html",
             ),
-
             "test-battery" => ResourceProtocolHandler::response_for_path(
                 request,
                 done_chan,
