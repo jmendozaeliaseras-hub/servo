@@ -54,9 +54,18 @@ const SCHEMA_SQL: &str = "
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS bookmark_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        parent_id INTEGER REFERENCES bookmark_folders(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_history_last_visited ON history(last_visited DESC);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_folder ON bookmarks(folder_id);
     CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_folders_parent ON bookmark_folders(parent_id);
 ";
 
 fn database_path() -> PathBuf {
@@ -86,7 +95,17 @@ pub struct Bookmark {
     pub id: i64,
     pub url: String,
     pub title: String,
+    pub folder_id: Option<i64>,
+    pub position: i64,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BookmarkFolder {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    pub position: i64,
 }
 
 // ── Bookmark operations ─────────────────────────────────────────────────────
@@ -143,7 +162,7 @@ pub fn is_bookmarked(url: &str) -> bool {
 
 fn get_all_bookmarks_with_conn(conn: &Connection) -> Vec<Bookmark> {
     let mut stmt = match conn.prepare(
-        "SELECT id, url, title, created_at FROM bookmarks ORDER BY position, created_at DESC",
+        "SELECT id, url, title, folder_id, position, created_at FROM bookmarks ORDER BY position, created_at DESC",
     ) {
         Ok(s) => s,
         Err(_) => return Vec::new(),
@@ -153,7 +172,9 @@ fn get_all_bookmarks_with_conn(conn: &Connection) -> Vec<Bookmark> {
             id: row.get(0)?,
             url: row.get(1)?,
             title: row.get(2)?,
-            created_at: row.get(3)?,
+            folder_id: row.get(3)?,
+            position: row.get(4)?,
+            created_at: row.get(5)?,
         })
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -445,6 +466,166 @@ fn deduplicate_path(path: PathBuf) -> PathBuf {
     parent.join(format!("{}_{}.{}", stem, ts, ext))
 }
 
+// ── Bookmark folder operations ─────────────────────────────────────────────
+
+fn create_folder_with_conn(conn: &Connection, name: &str, parent_id: Option<i64>) -> Result<i64, rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO bookmark_folders (name, parent_id) VALUES (?1, ?2)",
+        params![name, parent_id],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn create_folder(name: &str, parent_id: Option<i64>) -> Option<i64> {
+    let db = DB.lock().expect("Database lock poisoned");
+    match create_folder_with_conn(&db, name, parent_id) {
+        Ok(id) => Some(id),
+        Err(e) => {
+            error!("Failed to create folder: {}", e);
+            None
+        },
+    }
+}
+
+fn rename_folder_with_conn(conn: &Connection, id: i64, name: &str) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "UPDATE bookmark_folders SET name = ?1 WHERE id = ?2",
+        params![name, id],
+    )
+}
+
+pub fn rename_folder(id: i64, name: &str) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = rename_folder_with_conn(&db, id, name) {
+        error!("Failed to rename folder: {}", e);
+    }
+}
+
+fn delete_folder_with_conn(conn: &Connection, id: i64) -> Result<usize, rusqlite::Error> {
+    // Move bookmarks in this folder to root (no folder).
+    conn.execute(
+        "UPDATE bookmarks SET folder_id = NULL WHERE folder_id = ?1",
+        params![id],
+    )?;
+    conn.execute("DELETE FROM bookmark_folders WHERE id = ?1", params![id])
+}
+
+pub fn delete_folder(id: i64) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = delete_folder_with_conn(&db, id) {
+        error!("Failed to delete folder: {}", e);
+    }
+}
+
+fn get_all_folders_with_conn(conn: &Connection) -> Vec<BookmarkFolder> {
+    let mut stmt = match conn.prepare(
+        "SELECT id, name, parent_id, position FROM bookmark_folders ORDER BY position, name",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    match stmt.query_map([], |row| {
+        Ok(BookmarkFolder {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            parent_id: row.get(2)?,
+            position: row.get(3)?,
+        })
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+pub fn get_all_folders() -> Vec<BookmarkFolder> {
+    let db = DB.lock().expect("Database lock poisoned");
+    get_all_folders_with_conn(&db)
+}
+
+fn get_bookmarks_in_folder_with_conn(conn: &Connection, folder_id: Option<i64>) -> Vec<Bookmark> {
+    let (sql, param_value) = match folder_id {
+        Some(fid) => (
+            "SELECT id, url, title, folder_id, position, created_at FROM bookmarks WHERE folder_id = ?1 ORDER BY position, created_at DESC",
+            Some(fid),
+        ),
+        None => (
+            "SELECT id, url, title, folder_id, position, created_at FROM bookmarks WHERE folder_id IS NULL ORDER BY position, created_at DESC",
+            None,
+        ),
+    };
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let result = if let Some(fid) = param_value {
+        stmt.query_map(params![fid], |row| {
+            Ok(Bookmark {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                folder_id: row.get(3)?,
+                position: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+    } else {
+        stmt.query_map([], |row| {
+            Ok(Bookmark {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                folder_id: row.get(3)?,
+                position: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+    };
+    match result {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+pub fn get_bookmarks_in_folder(folder_id: Option<i64>) -> Vec<Bookmark> {
+    let db = DB.lock().expect("Database lock poisoned");
+    get_bookmarks_in_folder_with_conn(&db, folder_id)
+}
+
+fn move_bookmark_to_folder_with_conn(conn: &Connection, bookmark_id: i64, folder_id: Option<i64>) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "UPDATE bookmarks SET folder_id = ?1 WHERE id = ?2",
+        params![folder_id, bookmark_id],
+    )
+}
+
+pub fn move_bookmark_to_folder(bookmark_id: i64, folder_id: Option<i64>) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = move_bookmark_to_folder_with_conn(&db, bookmark_id, folder_id) {
+        error!("Failed to move bookmark: {}", e);
+    }
+}
+
+fn add_bookmark_to_folder_with_conn(conn: &Connection, url: &str, title: &str, folder_id: Option<i64>) -> Result<usize, rusqlite::Error> {
+    conn.execute(
+        "INSERT OR REPLACE INTO bookmarks (url, title, folder_id) VALUES (?1, ?2, ?3)",
+        params![url, title, folder_id],
+    )
+}
+
+pub fn add_bookmark_to_folder(url: &str, title: &str, folder_id: Option<i64>) -> bool {
+    let db = DB.lock().expect("Database lock poisoned");
+    match add_bookmark_to_folder_with_conn(&db, url, title, folder_id) {
+        Ok(_) => {
+            info!("Bookmarked to folder {:?}: {} ({})", folder_id, title, url);
+            true
+        },
+        Err(e) => {
+            error!("Failed to add bookmark to folder: {}", e);
+            false
+        },
+    }
+}
+
 // ── Site settings types ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -516,6 +697,64 @@ pub fn save_site_settings(settings: &SiteSettings) {
     let db = DB.lock().expect("Database lock poisoned");
     if let Err(e) = save_site_settings_with_conn(&db, settings) {
         error!("Failed to save site settings: {}", e);
+    }
+}
+
+// ── Bulk clear operations (for Clear Browsing Data dialog) ─────────────────
+
+fn clear_history_since_hours_with_conn(conn: &Connection, hours: u64) -> Result<usize, rusqlite::Error> {
+    if hours == 0 {
+        return conn.execute("DELETE FROM history", []);
+    }
+    conn.execute(
+        "DELETE FROM history WHERE last_visited >= datetime('now', ?1)",
+        params![format!("-{} hours", hours)],
+    )
+}
+
+pub fn clear_history_since_hours(hours: u64) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = clear_history_since_hours_with_conn(&db, hours) {
+        error!("Failed to clear history: {}", e);
+    }
+}
+
+fn clear_downloads_since_hours_with_conn(conn: &Connection, hours: u64) -> Result<usize, rusqlite::Error> {
+    if hours == 0 {
+        return conn.execute("DELETE FROM downloads", []);
+    }
+    conn.execute(
+        "DELETE FROM downloads WHERE created_at >= datetime('now', ?1)",
+        params![format!("-{} hours", hours)],
+    )
+}
+
+pub fn clear_downloads_since_hours(hours: u64) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = clear_downloads_since_hours_with_conn(&db, hours) {
+        error!("Failed to clear downloads: {}", e);
+    }
+}
+
+fn clear_all_bookmarks_with_conn(conn: &Connection) -> Result<usize, rusqlite::Error> {
+    conn.execute("DELETE FROM bookmarks", [])
+}
+
+pub fn clear_all_bookmarks() {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = clear_all_bookmarks_with_conn(&db) {
+        error!("Failed to clear bookmarks: {}", e);
+    }
+}
+
+fn clear_all_site_settings_with_conn(conn: &Connection) -> Result<usize, rusqlite::Error> {
+    conn.execute("DELETE FROM site_settings", [])
+}
+
+pub fn clear_all_site_settings() {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = clear_all_site_settings_with_conn(&db) {
+        error!("Failed to clear site settings: {}", e);
     }
 }
 

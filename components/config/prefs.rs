@@ -330,6 +330,16 @@ pub struct Preferences {
     /// `session_history_max_length` steps in the past will be discarded. Navigating forward
     /// or backward to that entry will cause the entire page to be reloaded.
     pub session_history_max_length: i64,
+    /// Theme preference: "" = system, "light", "dark".
+    pub shell_theme_preference: String,
+    /// Whether the favorites bar is visible below tabs.
+    pub shell_favorites_bar_visible: bool,
+    /// WebRTC leak prevention: "" = block_local_ips, "disable_webrtc", "allow_all".
+    pub privacy_webrtc_leak_prevention: String,
+    /// Whether DNS-over-HTTPS is enabled.
+    pub network_dns_over_https_enabled: bool,
+    /// DoH provider: "" = Cloudflare, "google", "quad9".
+    pub network_dns_over_https_provider: String,
     /// The background color of shell's viewport. This will be used by OpenGL's `glClearColor`.
     pub shell_background_color_rgba: [f64; 4],
     pub webgl_testing_context_creation_error: bool,
@@ -531,6 +541,11 @@ impl Preferences {
             privacy_fingerprint_protection_enabled: true,
             privacy_cookie_auto_shred: false,
             session_history_max_length: 20,
+            shell_theme_preference: String::new(),
+            shell_favorites_bar_visible: true,
+            privacy_webrtc_leak_prevention: String::new(),
+            network_dns_over_https_enabled: true,
+            network_dns_over_https_provider: String::new(),
             shell_background_color_rgba: [1.0, 1.0, 1.0, 1.0],
             threadpools_async_runtime_workers_max: 6,
             threadpools_fallback_worker_num: 3,

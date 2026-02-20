@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::Cell;
+use std::net::IpAddr;
 use std::rc::Rc;
 
 use dom_struct::dom_struct;
@@ -228,6 +229,39 @@ impl RTCPeerConnection {
         if self.closed.get() {
             return;
         }
+
+        // WebRTC leak prevention: filter ICE candidates based on privacy pref.
+        let webrtc_policy = servo_config::prefs::get().privacy_webrtc_leak_prevention.clone();
+        match webrtc_policy.as_str() {
+            "disable_webrtc" => return, // Block all candidates.
+            "allow_all" => {},          // No filtering.
+            _ => {
+                // Default: block local/private IPs from candidates.
+                // SDP candidate format: candidate:<foundation> <component> <transport> <priority> <ip> <port> typ <type>
+                let parts: Vec<&str> = candidate.candidate.split_whitespace().collect();
+                if parts.len() > 4 {
+                    if let Ok(ip) = parts[4].parse::<IpAddr>() {
+                        let is_private = match ip {
+                            IpAddr::V4(v4) => {
+                                v4.is_private() ||
+                                v4.is_loopback() ||
+                                v4.is_link_local() ||
+                                v4.octets()[0] == 169 && v4.octets()[1] == 254 // link-local
+                            },
+                            IpAddr::V6(v6) => {
+                                v6.is_loopback() ||
+                                v6.octets()[0] == 0xfe && (v6.octets()[1] & 0xc0) == 0x80 || // fe80::/10
+                                v6.octets()[0] == 0xfd // fd00::/8
+                            },
+                        };
+                        if is_private {
+                            return; // Drop this candidate — it leaks private IP.
+                        }
+                    }
+                }
+            },
+        }
+
         let candidate = RTCIceCandidate::new(
             self.global().as_window(),
             candidate.candidate.into(),

@@ -57,6 +57,8 @@ pub(crate) struct ServoShellWindow {
     pending_commands: RefCell<Vec<UserInterfaceCommand>>,
     /// Whether this is a private browsing window (no history, cookies cleared on close).
     is_private: bool,
+    /// Whether this is a Tor browsing window (traffic routed through Tor SOCKS5 proxy).
+    is_tor: bool,
 }
 
 impl ServoShellWindow {
@@ -70,6 +72,7 @@ impl ServoShellWindow {
             pending_favicon_loads: Default::default(),
             pending_commands: Default::default(),
             is_private: false,
+            is_tor: false,
         }
     }
 
@@ -83,11 +86,30 @@ impl ServoShellWindow {
             pending_favicon_loads: Default::default(),
             pending_commands: Default::default(),
             is_private: true,
+            is_tor: false,
+        }
+    }
+
+    pub(crate) fn new_tor(platform_window: Rc<dyn PlatformWindow>) -> Self {
+        Self {
+            webview_collection: Default::default(),
+            platform_window,
+            close_scheduled: Default::default(),
+            needs_update: Default::default(),
+            needs_repaint: Default::default(),
+            pending_favicon_loads: Default::default(),
+            pending_commands: Default::default(),
+            is_private: true, // Tor windows are always private.
+            is_tor: true,
         }
     }
 
     pub(crate) fn is_private(&self) -> bool {
         self.is_private
+    }
+
+    pub(crate) fn is_tor(&self) -> bool {
+        self.is_tor
     }
 
     pub(crate) fn id(&self) -> ServoShellWindowId {
@@ -372,6 +394,13 @@ impl ServoShellWindow {
                         let url = Url::parse("servo:newtab").unwrap();
                         let platform_window = create_platform_window(url.clone());
                         state.open_private_window(platform_window, url);
+                    }
+                },
+                UserInterfaceCommand::NewTorWindow => {
+                    if let Some(create_platform_window) = create_platform_window {
+                        let url = Url::parse("servo:newtab").unwrap();
+                        let platform_window = create_platform_window(url.clone());
+                        state.open_tor_window(platform_window, url);
                     }
                 },
             }

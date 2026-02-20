@@ -161,6 +161,7 @@ pub(crate) enum UserInterfaceCommand {
     CloseWebView(WebViewId),
     NewWindow,
     NewPrivateWindow,
+    NewTorWindow,
 }
 
 pub(crate) struct RunningAppState {
@@ -295,6 +296,50 @@ impl RunningAppState {
     ) -> Rc<ServoShellWindow> {
         let window = Rc::new(ServoShellWindow::new_private(platform_window.clone()));
         window.create_and_activate_toplevel_webview(self.clone(), initial_url);
+        self.windows
+            .borrow_mut()
+            .insert(window.id(), window.clone());
+
+        if platform_window.has_platform_focus() {
+            self.focus_window(window.clone());
+        }
+
+        window
+    }
+
+    pub(crate) fn open_tor_window(
+        self: &Rc<Self>,
+        platform_window: Rc<dyn PlatformWindow>,
+        initial_url: Url,
+    ) -> Rc<ServoShellWindow> {
+        // Save current proxy prefs so we can restore them after creating the webview.
+        // Proxy prefs are global and captured at connector construction time.
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        let saved_prefs = servo::prefs::get().clone();
+
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        {
+            let tor_port = crate::desktop::tor_manager::start_or_get_port();
+            if let Some(port) = tor_port {
+                let proxy = format!("socks5://127.0.0.1:{port}");
+                let mut p = servo::prefs::get().clone();
+                p.network_http_proxy_uri = proxy.clone();
+                p.network_https_proxy_uri = proxy;
+                p.network_dns_over_https_enabled = false;
+                p.privacy_webrtc_leak_prevention = "disable_webrtc".to_string();
+                p.network_referrer_policy = "no-referrer".to_string();
+                p.network_https_upgrade_enabled = true;
+                servo::prefs::set(p);
+            }
+        }
+
+        let window = Rc::new(ServoShellWindow::new_tor(platform_window.clone()));
+        window.create_and_activate_toplevel_webview(self.clone(), initial_url);
+
+        // Restore original prefs so non-Tor windows aren't affected.
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        servo::prefs::set(saved_prefs);
+
         self.windows
             .borrow_mut()
             .insert(window.id(), window.clone());

@@ -18,6 +18,7 @@ pub(crate) mod headed_window;
 mod headless_window;
 mod keyutils;
 mod protocols;
+pub(crate) mod tor_manager;
 mod tracing;
 #[cfg(feature = "webxr")]
 mod webxr;

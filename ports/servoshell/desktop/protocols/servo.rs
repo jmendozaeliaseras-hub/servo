@@ -74,6 +74,12 @@ impl ProtocolHandler for ServoProtocolHandler {
                 context,
                 "/test-battery.html",
             ),
+            "vpn-guide" => ResourceProtocolHandler::response_for_path(
+                request,
+                done_chan,
+                context,
+                "/vpn-guide.html",
+            ),
 
             "experimental-preferences" => {
                 let pref_list = EXPERIMENTAL_PREFS

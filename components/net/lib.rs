@@ -10,6 +10,7 @@ pub mod content_blocking;
 pub mod cookie;
 pub mod cookie_storage;
 mod decoder;
+pub mod doh_resolver;
 pub mod embedder;
 pub mod filemanager_thread;
 mod hosts;

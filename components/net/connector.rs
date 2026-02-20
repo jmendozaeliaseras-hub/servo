@@ -33,6 +33,7 @@ use tokio::net::TcpStream;
 use tower::Service;
 
 use crate::async_runtime::spawn_task;
+use crate::doh_resolver;
 use crate::hosts::replace_host;
 
 pub const BUF_SIZE: usize = 32768;
@@ -84,11 +85,42 @@ impl Service<Destination> for ServoHttpConnector {
             }
         }
 
-        Box::pin(
-            self.inner
-                .call(new_dest)
-                .map_err(|e| ConnectionError::HttpError(format!("{e}"))),
-        )
+        // If DNS-over-HTTPS is enabled, pre-resolve the hostname.
+        let doh_enabled = pref!(network_dns_over_https_enabled);
+        let original_host = new_dest
+            .authority()
+            .map(|a| a.host().to_string());
+
+        let mut inner = self.inner.clone();
+        Box::pin(async move {
+            let mut target = new_dest;
+            if doh_enabled {
+                if let Some(ref hostname) = original_host {
+                    if let Some(resolved_ip) = doh_resolver::resolve(hostname).await {
+                        // Replace hostname with resolved IP for the TCP connection.
+                        let mut parts = target.clone().into_parts();
+                        if let Some(auth) = &parts.authority {
+                            let authority_str = if let Some(port) = auth.port() {
+                                format!("{}:{}", resolved_ip, port.as_str())
+                            } else {
+                                resolved_ip.to_string()
+                            };
+                            if let Ok(authority) = Authority::from_maybe_shared(authority_str) {
+                                parts.authority = Some(authority);
+                                if let Ok(dest) = Destination::from_parts(parts) {
+                                    target = dest;
+                                }
+                            }
+                        }
+                    }
+                    // If DoH resolution fails, fall through to system DNS.
+                }
+            }
+            inner
+                .call(target)
+                .await
+                .map_err(|e| ConnectionError::HttpError(format!("{e}")))
+        })
     }
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {

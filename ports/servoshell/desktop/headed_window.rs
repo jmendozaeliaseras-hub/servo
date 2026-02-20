@@ -474,9 +474,16 @@ impl HeadedWindow {
             .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, 'P', || {
                 window.queue_user_interface_command(UserInterfaceCommand::NewPrivateWindow);
             })
-            // Ctrl+Shift+Delete — clear browsing data
+            // Alt+Shift+T — open Tor window
+            .shortcut(Modifiers::ALT | Modifiers::SHIFT, 'T', || {
+                window.queue_user_interface_command(UserInterfaceCommand::NewTorWindow);
+            })
+            // Ctrl+Shift+Delete — open clear browsing data dialog
             .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, Key::Named(NamedKey::Delete), || {
-                crate::desktop::browser_storage::clear_all_history();
+                self.add_dialog(
+                    active_webview.id(),
+                    Dialog::new_clear_data_dialog(),
+                );
             })
             // Ctrl+S — save page to Downloads folder
             .shortcut(CMD_OR_CONTROL, 'S', || {
@@ -874,7 +881,13 @@ impl PlatformWindow for HeadedWindow {
     }
 
     fn update_user_interface_state(&self, _: &RunningAppState, window: &ServoShellWindow) -> bool {
-        let private_suffix = if window.is_private() { " (Private)" } else { "" };
+        let private_suffix = if window.is_tor() {
+            " (Tor)"
+        } else if window.is_private() {
+            " (Private)"
+        } else {
+            ""
+        };
         let title = window
             .active_webview()
             .and_then(|webview| {

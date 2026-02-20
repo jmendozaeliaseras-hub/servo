@@ -58,6 +58,15 @@ pub enum Dialog {
         menu: Option<ContextMenu>,
         toolbar_offset: Length<f32, DeviceIndependentPixel>,
     },
+    ClearData {
+        clear_history: bool,
+        clear_cookies: bool,
+        clear_cache: bool,
+        clear_downloads: bool,
+        clear_site_settings: bool,
+        clear_bookmarks: bool,
+        time_range: usize,
+    },
 }
 
 impl Dialog {
@@ -146,6 +155,18 @@ impl Dialog {
             current_color,
             maybe_prompt: Some(prompt),
             toolbar_offset,
+        }
+    }
+
+    pub fn new_clear_data_dialog() -> Self {
+        Dialog::ClearData {
+            clear_history: true,
+            clear_cookies: true,
+            clear_cache: true,
+            clear_downloads: false,
+            clear_site_settings: false,
+            clear_bookmarks: false,
+            time_range: 4, // default: All time
         }
     }
 
@@ -617,6 +638,85 @@ impl Dialog {
                 }
 
                 is_open
+            },
+            Dialog::ClearData {
+                clear_history,
+                clear_cookies,
+                clear_cache,
+                clear_downloads,
+                clear_site_settings,
+                clear_bookmarks,
+                time_range,
+            } => {
+                let mut dialog_action = DialogAction::Continue;
+                Modal::new("clear_data".into()).show(ctx, |ui| {
+                    let mut frame = egui::Frame::default().inner_margin(10.0).begin(ui);
+                    frame.content_ui.set_min_width(280.0);
+                    frame.content_ui.heading("Clear Browsing Data");
+                    frame.content_ui.add_space(8.0);
+
+                    let time_labels = ["Last hour", "Last 24 hours", "Last 7 days", "Last 4 weeks", "All time"];
+                    egui::ComboBox::from_label("Time range")
+                        .selected_text(time_labels[*time_range])
+                        .show_ui(&mut frame.content_ui, |ui| {
+                            for (i, label) in time_labels.iter().enumerate() {
+                                ui.selectable_value(time_range, i, *label);
+                            }
+                        });
+
+                    frame.content_ui.add_space(8.0);
+                    frame.content_ui.checkbox(clear_history, "Browsing history");
+                    frame.content_ui.checkbox(clear_cookies, "Cookies");
+                    frame.content_ui.checkbox(clear_cache, "Cached data");
+                    frame.content_ui.checkbox(clear_downloads, "Download history");
+                    frame.content_ui.checkbox(clear_site_settings, "Site settings");
+                    frame.content_ui.checkbox(clear_bookmarks, "Bookmarks");
+                    frame.end(ui);
+
+                    egui::Sides::new().show(
+                        ui,
+                        |_ui| {},
+                        |ui| {
+                            if ui.button("Clear").clicked() ||
+                                ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
+                                dialog_action = DialogAction::Submit;
+                            }
+                            if ui.button("Cancel").clicked() ||
+                                ui.input(|i| i.key_pressed(egui::Key::Escape))
+                            {
+                                dialog_action = DialogAction::Dismiss;
+                            }
+                        },
+                    );
+                });
+
+                match dialog_action {
+                    DialogAction::Submit => {
+                        let hours = match *time_range {
+                            0 => 1u64,
+                            1 => 24,
+                            2 => 168,
+                            3 => 672,
+                            _ => 0, // 0 = all time
+                        };
+                        if *clear_history {
+                            crate::desktop::browser_storage::clear_history_since_hours(hours);
+                        }
+                        if *clear_downloads {
+                            crate::desktop::browser_storage::clear_downloads_since_hours(hours);
+                        }
+                        if *clear_bookmarks {
+                            crate::desktop::browser_storage::clear_all_bookmarks();
+                        }
+                        if *clear_site_settings {
+                            crate::desktop::browser_storage::clear_all_site_settings();
+                        }
+                        false
+                    },
+                    DialogAction::Dismiss => false,
+                    DialogAction::Continue => true,
+                }
             },
             Dialog::ContextMenu {
                 menu,

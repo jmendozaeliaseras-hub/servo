@@ -90,6 +90,12 @@ pub struct Gui {
 
     /// The current find-in-page search query.
     find_query: String,
+
+    /// The currently applied theme preference (to detect changes).
+    applied_theme: String,
+
+    /// Cached bookmark folders.
+    cached_folders: Vec<browser_storage::BookmarkFolder>,
 }
 
 fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
@@ -156,6 +162,14 @@ impl Gui {
             options.fallback_theme = egui::Theme::Light;
         });
 
+        // Apply initial theme preference.
+        let theme_pref = servo::prefs::get().shell_theme_preference.clone();
+        match theme_pref.as_str() {
+            "dark" => context.egui_ctx.set_visuals(egui::Visuals::dark()),
+            "light" => context.egui_ctx.set_visuals(egui::Visuals::light()),
+            _ => {}, // system default
+        }
+
         Self {
             rendering_context,
             context,
@@ -169,7 +183,7 @@ impl Gui {
             favicon_textures: Default::default(),
             bookmarks_panel_visible: false,
             history_panel_visible: false,
-            cached_bookmarks: Vec::new(),
+            cached_bookmarks: browser_storage::get_all_bookmarks(),
             cached_history: Vec::new(),
             history_search: String::new(),
             downloads_panel_visible: false,
@@ -177,6 +191,8 @@ impl Gui {
             settings_panel_visible: false,
             find_bar_visible: false,
             find_query: String::new(),
+            applied_theme: theme_pref,
+            cached_folders: Vec::new(),
         }
     }
 
@@ -336,12 +352,47 @@ impl Gui {
             cached_downloads,
             find_bar_visible,
             find_query,
+            applied_theme,
+            cached_folders,
             ..
         } = self;
 
         let winit_window = headed_window.winit_window();
         context.run(winit_window, |ctx| {
             load_pending_favicons(ctx, window, favicon_textures);
+
+            // Detect theme preference changes and re-apply visuals.
+            {
+                let current_theme_pref = servo::prefs::get().shell_theme_preference.clone();
+                if current_theme_pref != *applied_theme {
+                    match current_theme_pref.as_str() {
+                        "dark" => ctx.set_visuals(egui::Visuals::dark()),
+                        "light" => ctx.set_visuals(egui::Visuals::light()),
+                        _ => {
+                            // System default: reset to default visuals
+                            ctx.set_visuals(egui::Visuals::default());
+                        },
+                    }
+                    // Update shell background color to match theme.
+                    let mut p = servo::prefs::get().clone();
+                    match current_theme_pref.as_str() {
+                        "dark" => p.shell_background_color_rgba = [0.1, 0.1, 0.1, 1.0],
+                        "light" => p.shell_background_color_rgba = [1.0, 1.0, 1.0, 1.0],
+                        _ => {},
+                    }
+                    servo::prefs::set(p);
+                    // Notify webview of theme change for CSS prefers-color-scheme.
+                    if let Some(webview) = window.active_webview() {
+                        let theme = match current_theme_pref.as_str() {
+                            "dark" => servo::Theme::Dark,
+                            "light" => servo::Theme::Light,
+                            _ => servo::Theme::Light,
+                        };
+                        webview.notify_theme_change(theme);
+                    }
+                    *applied_theme = current_theme_pref;
+                }
+            }
 
             // TODO: While in fullscreen add some way to mitigate the increased phishing risk
             // when not displaying the URL bar: https://github.com/servo/servo/issues/32443
@@ -559,6 +610,11 @@ impl Gui {
                                         }
                                     }
 
+                                    // Tor indicator when in a Tor window.
+                                    if window.is_tor() {
+                                        ui.colored_label(egui::Color32::from_rgb(128, 0, 255), "Tor");
+                                    }
+
                                     let location_id = egui::Id::new("location_input");
                                     let location_field = ui.add_sized(
                                         ui.available_size(),
@@ -649,6 +705,80 @@ impl Gui {
                 });
             };
 
+            // Favorites bar below tabs.
+            if servo::prefs::get().shell_favorites_bar_visible {
+                TopBottomPanel::top("favorites_bar")
+                    .frame(egui::Frame::default()
+                        .fill(ctx.style().visuals.window_fill)
+                        .inner_margin(egui::Margin::symmetric(6.0, 2.0)))
+                    .show(ctx, |ui| {
+                        ui.allocate_ui_with_layout(
+                            ui.available_size(),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.spacing_mut().item_spacing.x = 2.0;
+                                let mut navigate_to = None;
+
+                                // Show folders first, then root bookmarks.
+                                let folders = browser_storage::get_all_folders();
+                                for folder in &folders {
+                                    if folder.parent_id.is_some() {
+                                        continue; // Only root-level folders
+                                    }
+                                    let folder_id = egui::Id::new(format!("fav_folder_{}", folder.id));
+                                    let btn = ui.add(
+                                        Button::new(format!("📁 {}", truncate_with_ellipsis(&folder.name, 15)))
+                                            .fill(egui::Color32::TRANSPARENT)
+                                    );
+                                    if btn.clicked() {
+                                        ui.memory_mut(|mem| mem.toggle_popup(folder_id));
+                                    }
+                                    egui::popup_below_widget(ui, folder_id, &btn, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                                        ui.set_min_width(180.0);
+                                        let folder_bookmarks = browser_storage::get_bookmarks_in_folder(Some(folder.id));
+                                        if folder_bookmarks.is_empty() {
+                                            ui.weak("(empty)");
+                                        }
+                                        for bm in &folder_bookmarks {
+                                            let title = if bm.title.is_empty() { &bm.url } else { &bm.title };
+                                            if ui.button(truncate_with_ellipsis(title, 30)).on_hover_text(&bm.url).clicked() {
+                                                navigate_to = Some(bm.url.clone());
+                                                ui.memory_mut(|mem| mem.toggle_popup(folder_id));
+                                            }
+                                        }
+                                    });
+                                }
+
+                                // Root-level bookmarks (no folder).
+                                for bookmark in cached_bookmarks.iter() {
+                                    if bookmark.folder_id.is_some() {
+                                        continue; // Skip bookmarks in folders
+                                    }
+                                    let title = if bookmark.title.is_empty() {
+                                        &bookmark.url
+                                    } else {
+                                        &bookmark.title
+                                    };
+                                    let btn = ui.add(
+                                        Button::new(truncate_with_ellipsis(title, 18))
+                                            .fill(egui::Color32::TRANSPARENT)
+                                    );
+                                    if btn.clicked() {
+                                        navigate_to = Some(bookmark.url.clone());
+                                    }
+                                    btn.on_hover_text(&bookmark.url);
+                                }
+
+                                if let Some(url) = navigate_to {
+                                    window.queue_user_interface_command(
+                                        UserInterfaceCommand::Go(url),
+                                    );
+                                }
+                            },
+                        );
+                    });
+            }
+
             // Handle keyboard shortcuts for bookmarks/history panels.
             let toggle_bookmark = ctx.input(|i| {
                 i.clone().consume_key(Modifiers::COMMAND, Key::D)
@@ -680,6 +810,7 @@ impl Gui {
                     *history_panel_visible = false;
                     *downloads_panel_visible = false;
                     *cached_bookmarks = browser_storage::get_all_bookmarks();
+                    *cached_folders = browser_storage::get_all_folders();
                 }
             }
             if toggle_history {
@@ -694,7 +825,7 @@ impl Gui {
             // Render bookmarks side panel.
             if *bookmarks_panel_visible {
                 SidePanel::left("bookmarks_panel")
-                    .default_width(250.0)
+                    .default_width(260.0)
                     .resizable(true)
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| {
@@ -706,17 +837,32 @@ impl Gui {
                             });
                         });
                         ui.separator();
+
+                        // New Folder button.
+                        if ui.small_button("+ New Folder").clicked() {
+                            browser_storage::create_folder("New Folder", None);
+                            *cached_folders = browser_storage::get_all_folders();
+                        }
+                        ui.separator();
+
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let mut navigate_to = None;
                             let mut remove_url = None;
+                            let mut delete_folder_id = None;
+                            let mut needs_refresh = false;
+
+                            // Show root-level bookmarks first.
                             for bookmark in cached_bookmarks.iter() {
+                                if bookmark.folder_id.is_some() {
+                                    continue; // Skip bookmarks in folders
+                                }
                                 ui.horizontal(|ui| {
                                     let title = if bookmark.title.is_empty() {
                                         &bookmark.url
                                     } else {
                                         &bookmark.title
                                     };
-                                    if ui.link(truncate_with_ellipsis(title, 30)).on_hover_text(&bookmark.url).clicked() {
+                                    if ui.link(truncate_with_ellipsis(title, 28)).on_hover_text(&bookmark.url).clicked() {
                                         navigate_to = Some(bookmark.url.clone());
                                     }
                                     if ui.small_button("✕").on_hover_text("Remove").clicked() {
@@ -724,7 +870,40 @@ impl Gui {
                                     }
                                 });
                             }
-                            if cached_bookmarks.is_empty() {
+
+                            // Show folders with their bookmarks.
+                            for folder in cached_folders.iter() {
+                                if folder.parent_id.is_some() {
+                                    continue; // Only root-level folders for now
+                                }
+                                let header_id = ui.make_persistent_id(format!("bm_folder_{}", folder.id));
+                                egui::collapsing_header::CollapsingState::load_with_default_open(
+                                    ui.ctx(), header_id, false,
+                                ).show_header(ui, |ui| {
+                                    ui.label(format!("📁 {}", &folder.name));
+                                    if ui.small_button("✕").on_hover_text("Delete folder").clicked() {
+                                        delete_folder_id = Some(folder.id);
+                                    }
+                                }).body(|ui| {
+                                    let folder_bookmarks = browser_storage::get_bookmarks_in_folder(Some(folder.id));
+                                    if folder_bookmarks.is_empty() {
+                                        ui.weak("(empty)");
+                                    }
+                                    for bm in &folder_bookmarks {
+                                        ui.horizontal(|ui| {
+                                            let title = if bm.title.is_empty() { &bm.url } else { &bm.title };
+                                            if ui.link(truncate_with_ellipsis(title, 25)).on_hover_text(&bm.url).clicked() {
+                                                navigate_to = Some(bm.url.clone());
+                                            }
+                                            if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                                                remove_url = Some(bm.url.clone());
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+
+                            if cached_bookmarks.is_empty() && cached_folders.is_empty() {
                                 ui.label("No bookmarks yet.\nPress Ctrl+D to bookmark a page.");
                             }
                             if let Some(url) = navigate_to {
@@ -734,7 +913,15 @@ impl Gui {
                             }
                             if let Some(url) = remove_url {
                                 browser_storage::remove_bookmark(&url);
+                                needs_refresh = true;
+                            }
+                            if let Some(fid) = delete_folder_id {
+                                browser_storage::delete_folder(fid);
+                                needs_refresh = true;
+                            }
+                            if needs_refresh {
                                 *cached_bookmarks = browser_storage::get_all_bookmarks();
+                                *cached_folders = browser_storage::get_all_folders();
                             }
                         });
                     });
@@ -865,6 +1052,48 @@ impl Gui {
                         ui.separator();
 
                         egui::ScrollArea::vertical().show(ui, |ui| {
+                            // — Appearance section —
+                            ui.strong("Appearance");
+                            ui.add_space(4.0);
+                            {
+                                let prefs = servo::prefs::get();
+                                let current = prefs.shell_theme_preference.clone();
+                                drop(prefs);
+
+                                ui.horizontal(|ui| {
+                                    ui.label("Theme:");
+                                    if ui.selectable_label(current.is_empty(), "System").clicked() && !current.is_empty() {
+                                        let mut p = servo::prefs::get().clone();
+                                        p.shell_theme_preference = String::new();
+                                        servo::prefs::set(p);
+                                    }
+                                    if ui.selectable_label(current == "light", "Light").clicked() && current != "light" {
+                                        let mut p = servo::prefs::get().clone();
+                                        p.shell_theme_preference = "light".to_string();
+                                        servo::prefs::set(p);
+                                    }
+                                    if ui.selectable_label(current == "dark", "Dark").clicked() && current != "dark" {
+                                        let mut p = servo::prefs::get().clone();
+                                        p.shell_theme_preference = "dark".to_string();
+                                        servo::prefs::set(p);
+                                    }
+                                });
+                            }
+
+                            {
+                                let prefs = servo::prefs::get();
+                                let mut fav_bar = prefs.shell_favorites_bar_visible;
+                                drop(prefs);
+                                if ui.checkbox(&mut fav_bar, "Show favorites bar").changed() {
+                                    let mut p = servo::prefs::get().clone();
+                                    p.shell_favorites_bar_visible = fav_bar;
+                                    servo::prefs::set(p);
+                                }
+                            }
+
+                            ui.add_space(8.0);
+                            ui.separator();
+
                             // — Privacy section —
                             ui.strong("Privacy");
                             ui.add_space(4.0);
@@ -914,6 +1143,57 @@ impl Gui {
                             ui.add_space(4.0);
                             ui.label(format!("Cookie policy: {}", cookie_policy));
                             ui.label(format!("Referrer policy: {}", referrer_policy));
+
+                            ui.add_space(4.0);
+                            {
+                                let webrtc_pref = servo::prefs::get().privacy_webrtc_leak_prevention.clone();
+                                ui.horizontal(|ui| {
+                                    ui.label("WebRTC:");
+                                    let options = [
+                                        ("", "Block local IPs"),
+                                        ("disable_webrtc", "Disable WebRTC"),
+                                        ("allow_all", "Allow all"),
+                                    ];
+                                    for (value, label) in &options {
+                                        if ui.selectable_label(webrtc_pref == *value, *label).clicked() && webrtc_pref != *value {
+                                            let mut p = servo::prefs::get().clone();
+                                            p.privacy_webrtc_leak_prevention = value.to_string();
+                                            servo::prefs::set(p);
+                                        }
+                                    }
+                                });
+                            }
+
+                            ui.add_space(4.0);
+                            {
+                                let prefs = servo::prefs::get();
+                                let mut doh_enabled = prefs.network_dns_over_https_enabled;
+                                let doh_provider = prefs.network_dns_over_https_provider.clone();
+                                drop(prefs);
+
+                                if ui.checkbox(&mut doh_enabled, "DNS-over-HTTPS").changed() {
+                                    let mut p = servo::prefs::get().clone();
+                                    p.network_dns_over_https_enabled = doh_enabled;
+                                    servo::prefs::set(p);
+                                }
+                                if doh_enabled {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Provider:");
+                                        let providers = [
+                                            ("", "Cloudflare"),
+                                            ("google", "Google"),
+                                            ("quad9", "Quad9"),
+                                        ];
+                                        for (value, label) in &providers {
+                                            if ui.selectable_label(doh_provider == *value, *label).clicked() && doh_provider != *value {
+                                                let mut p = servo::prefs::get().clone();
+                                                p.network_dns_over_https_provider = value.to_string();
+                                                servo::prefs::set(p);
+                                            }
+                                        }
+                                    });
+                                }
+                            }
 
                             ui.add_space(8.0);
                             ui.separator();
