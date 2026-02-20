@@ -41,6 +41,7 @@ use hyper_serde::Serde;
 use ipc_channel::ipc::{self, IpcSender};
 use ipc_channel::router::ROUTER;
 use log::{debug, error, info, log_enabled, warn};
+use servo_config::pref;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use net_traits::fetch::headers::get_value_from_header_list;
 use net_traits::http_status::HttpStatus;
@@ -332,7 +333,24 @@ fn set_request_cookies(
     url: &ServoUrl,
     headers: &mut HeaderMap,
     cookie_jar: &RwLock<CookieStorage>,
+    request_origin: &Origin,
 ) {
+    // Privacy: Check third-party cookie policy before sending cookies.
+    let cookie_policy: String = pref!(network_cookie_policy);
+    if cookie_policy == "block-all" {
+        return;
+    }
+    if cookie_policy == "block-third-party" || cookie_policy.is_empty() {
+        // Default policy: block third-party cookies.
+        // Compare the request origin with the cookie URL's origin.
+        if let Origin::Origin(ref immutable_origin) = *request_origin {
+            let cookie_origin = url.origin();
+            if !is_same_site(immutable_origin, &cookie_origin) {
+                return;
+            }
+        }
+    }
+
     let mut cookie_jar = cookie_jar.write();
     cookie_jar.remove_expired_cookies_for_url(url);
     if let Some(cookie_list) = cookie_jar.cookies_for_url(url, CookieSource::HTTP) {
@@ -356,7 +374,21 @@ fn set_cookies_from_headers(
     url: &ServoUrl,
     headers: &HeaderMap,
     cookie_jar: &RwLock<CookieStorage>,
+    request_origin: &Origin,
 ) {
+    // Privacy: Block third-party cookie setting.
+    let cookie_policy: String = pref!(network_cookie_policy);
+    if cookie_policy == "block-all" {
+        return;
+    }
+    if cookie_policy == "block-third-party" || cookie_policy.is_empty() {
+        if let Origin::Origin(ref immutable_origin) = *request_origin {
+            let cookie_origin = url.origin();
+            if !is_same_site(immutable_origin, &cookie_origin) {
+                return;
+            }
+        }
+    }
     for cookie in headers.get_all(header::SET_COOKIE) {
         let cookie_bytes = cookie.as_bytes();
         if !ServoCookie::is_valid_name_or_value(cookie_bytes) {
@@ -1348,6 +1380,29 @@ async fn http_network_or_cache_fetch(
         &mut http_fetch_params.request
     };
 
+    // Privacy: Check content blocking before proceeding with the request.
+    if pref!(privacy_content_blocking_enabled) {
+        let request_url = http_request.current_url().to_string();
+        let source_url = match &http_request.referrer {
+            Referrer::ReferrerUrl(url) | Referrer::Client(url) => url.to_string(),
+            Referrer::NoReferrer => String::new(),
+        };
+        let request_type = match http_request.destination {
+            Destination::Script | Destination::ServiceWorker | Destination::Worker |
+            Destination::SharedWorker => "script",
+            Destination::Image => "image",
+            Destination::Style => "stylesheet",
+            Destination::Font => "font",
+            Destination::Document | Destination::Frame | Destination::IFrame => "document",
+            Destination::Audio | Destination::Video | Destination::Track => "media",
+            _ => "other",
+        };
+        if crate::content_blocking::should_block(&request_url, &source_url, request_type) {
+            info!("Content blocked: {}", request_url);
+            return Response::network_error(NetworkError::LoadCancelled);
+        }
+    }
+
     // Step 8.3: Let includeCredentials be true if one of:
     let include_credentials = match http_request.credentials_mode {
         // request’s credentials mode is "include"
@@ -1469,6 +1524,20 @@ async fn http_network_or_cache_fetch(
         }
     }
 
+    // Privacy: Send Do Not Track header if enabled.
+    if pref!(network_dnt_enabled) {
+        if let Ok(value) = HeaderValue::from_str("1") {
+            http_request.headers.insert("DNT", value);
+        }
+    }
+
+    // Privacy: Send Global Privacy Control header if enabled.
+    if pref!(network_gpc_enabled) {
+        if let Ok(value) = HeaderValue::from_str("1") {
+            http_request.headers.insert("Sec-GPC", value);
+        }
+    }
+
     // Step 8.15: If httpRequest’s header list does not contain `User-Agent`, then user agents
     // should append (`User-Agent`, default `User-Agent` value) to httpRequest’s header list.
     if !http_request.headers.contains_key(header::USER_AGENT) {
@@ -1548,6 +1617,7 @@ async fn http_network_or_cache_fetch(
             &current_url,
             &mut http_request.headers,
             &context.state.cookie_jar,
+            &http_request.origin,
         );
         // Substep 2
         if !http_request.headers.contains_key(header::AUTHORIZATION) {
@@ -2328,7 +2398,7 @@ async fn http_network_fetch(
     // TODO this step isn't possible yet
     // Step 15
     if credentials_flag {
-        set_cookies_from_headers(&url, &response.headers, &context.state.cookie_jar);
+        set_cookies_from_headers(&url, &response.headers, &context.state.cookie_jar, &fetch_params.request.origin);
     }
     context
         .state

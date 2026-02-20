@@ -18,6 +18,7 @@ use http::header::{self, HeaderMap, HeaderName, RANGE};
 use http::{HeaderValue, Method, StatusCode};
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender};
 use log::{debug, trace, warn};
+use servo_config::pref;
 use malloc_size_of_derive::MallocSizeOf;
 use mime::{self, Mime};
 use net_traits::fetch::headers::{determine_nosniff, extract_mime_type_as_mime};
@@ -394,6 +395,32 @@ pub async fn main_fetch(
     // Step 3.
     // TODO: handle request abort.
 
+    // Privacy: Upgrade http:// to https:// by default when preference is enabled.
+    // This runs before the spec-defined upgrade check so that all plain HTTP
+    // requests are upgraded unless the preference is turned off.
+    if pref!(network_https_upgrade_enabled) {
+        let scheme = request.current_url().scheme().to_owned();
+        if scheme == "http" {
+            trace!(
+                "privacy: upgrading {} to https",
+                request.current_url()
+            );
+            let _ = request
+                .current_url_mut()
+                .as_mut_url()
+                .set_scheme("https");
+        } else if scheme == "ws" {
+            trace!(
+                "privacy: upgrading {} to wss",
+                request.current_url()
+            );
+            let _ = request
+                .current_url_mut()
+                .as_mut_url()
+                .set_scheme("wss");
+        }
+    }
+
     // Step 4. Upgrade request to a potentially trustworthy URL, if appropriate.
     if should_upgrade_request_to_potentially_trustworthy(request, context) ||
         should_upgrade_mixed_content_request(request, &context.protocols)
@@ -449,6 +476,25 @@ pub async fn main_fetch(
     // to request’s policy container’s referrer policy.
     if request.referrer_policy == ReferrerPolicy::EmptyString {
         request.referrer_policy = policy_container.get_referrer_policy();
+    }
+
+    // Privacy: Override referrer policy with user preference when the page hasn’t set
+    // a stricter policy. Only overrides the default (strict-origin-when-cross-origin)
+    // with a more restrictive policy from preferences.
+    if request.referrer_policy == ReferrerPolicy::StrictOriginWhenCrossOrigin ||
+        request.referrer_policy == ReferrerPolicy::EmptyString
+    {
+        let policy_pref: String = pref!(network_referrer_policy);
+        let override_policy = match policy_pref.as_str() {
+            "no-referrer" => Some(ReferrerPolicy::NoReferrer),
+            "same-origin" => Some(ReferrerPolicy::SameOrigin),
+            "strict-origin" => Some(ReferrerPolicy::StrictOrigin),
+            // empty string or "strict-origin-when-cross-origin" = keep default
+            _ => None,
+        };
+        if let Some(policy) = override_policy {
+            request.referrer_policy = policy;
+        }
     }
 
     let referrer_url = match mem::replace(&mut request.referrer, Referrer::NoReferrer) {

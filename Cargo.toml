@@ -25,6 +25,8 @@ rust-version = "1.86.0"
 
 [workspace.dependencies]
 accesskit = { version = "0.21.1", features = ["serde"] }
+adblock = "0.12.1"
+rusqlite = { version = "0.37", features = ["bundled"] }
 accountable-refcell = "0.2.2"
 aes = "0.8.4"
 aes-gcm = "0.10.3"

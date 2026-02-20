@@ -7,6 +7,8 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use app_units::Au;
 use base::generic_channel::GenericSender;
 use base::{Epoch, generic_channel};
@@ -42,6 +44,8 @@ use style_traits::{CssWriter, ParsingMode};
 use unicode_script::Script;
 use url::Url;
 use webrender_api::ImageKey;
+
+use servo_config::pref;
 
 use crate::canvas_context::{CanvasContext, OffscreenRenderingContext, RenderingContext};
 use crate::conversions::Convert;
@@ -215,6 +219,32 @@ pub(super) struct CanvasState {
     /// <https://html.spec.whatwg.org/multipage/#current-default-path>
     #[no_trace]
     current_default_path: DomRefCell<Path>,
+}
+
+/// Apply deterministic noise to RGBA pixel data to prevent canvas fingerprinting.
+/// Flips the least-significant bit of each color channel using a simple hash-based PRNG.
+/// The noise is seeded per process, so results are consistent within a session but
+/// differ across browser restarts.
+fn apply_fingerprint_noise(data: &mut [u8]) {
+    use std::process;
+    // Seed: hash of process ID (consistent within session, changes on restart).
+    let mut hasher = DefaultHasher::new();
+    process::id().hash(&mut hasher);
+    let mut state = hasher.finish();
+
+    // Iterate over RGBA pixels (4 bytes each), only perturb R, G, B (skip alpha).
+    for chunk in data.chunks_exact_mut(4) {
+        // Simple xorshift-style PRNG step.
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+
+        // Flip the LSB of each color channel based on different bits of the state.
+        chunk[0] ^= (state as u8) & 1;
+        chunk[1] ^= ((state >> 8) as u8) & 1;
+        chunk[2] ^= ((state >> 16) as u8) & 1;
+        // Alpha channel (chunk[3]) left unchanged to avoid visual artifacts.
+    }
 }
 
 impl CanvasState {
@@ -1804,6 +1834,10 @@ impl CanvasState {
                 },
                 SnapshotPixelFormat::RGBA,
             );
+            // Privacy: Add noise to least-significant bits to prevent canvas fingerprinting.
+            if pref!(privacy_fingerprint_protection_enabled) {
+                apply_fingerprint_noise(snapshot.as_raw_bytes_mut());
+            }
             Some(snapshot.into())
         } else {
             None

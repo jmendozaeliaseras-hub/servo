@@ -64,6 +64,10 @@ use crate::network_listener::{FetchResponseListener, ResourceTimingListener, sub
 use crate::script_runtime::{CanGc, JSContext};
 
 pub(super) fn hardware_concurrency() -> u64 {
+    // Privacy: Return a generic value to prevent fingerprinting via core count.
+    if pref!(privacy_fingerprint_protection_enabled) {
+        return 4;
+    }
     static CPUS: LazyLock<u64> = LazyLock::new(|| num_cpus::get().try_into().unwrap_or(1));
 
     *CPUS

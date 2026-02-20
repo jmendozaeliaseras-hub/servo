@@ -23,7 +23,7 @@ use servo::{
     DeviceIntPoint, DeviceIntSize, EmbedderControl, EmbedderControlId, EventLoopWaker,
     GenericSender, InputEvent, InputEventId, InputEventResult, JSValue, LoadStatus,
     MediaSessionEvent, PermissionRequest, PrefValue, Preferences, ScreenshotCaptureError, Servo,
-    ServoDelegate, ServoError, TraversalId, UserContentManager, WebDriverCommandMsg,
+    ServoDelegate, ServoError, StorageType, TraversalId, UserContentManager, WebDriverCommandMsg,
     WebDriverJSResult, WebDriverLoadStatus, WebDriverScriptCommand, WebDriverSenders, WebView,
     WebViewDelegate, WebViewId, pref,
 };
@@ -160,6 +160,7 @@ pub(crate) enum UserInterfaceCommand {
     NewWebView,
     CloseWebView(WebViewId),
     NewWindow,
+    NewPrivateWindow,
 }
 
 pub(crate) struct RunningAppState {
@@ -280,6 +281,24 @@ impl RunningAppState {
             .insert(window.id(), window.clone());
 
         // If the window already has platform focus, mark it as focused in our application state.
+        if platform_window.has_platform_focus() {
+            self.focus_window(window.clone());
+        }
+
+        window
+    }
+
+    pub(crate) fn open_private_window(
+        self: &Rc<Self>,
+        platform_window: Rc<dyn PlatformWindow>,
+        initial_url: Url,
+    ) -> Rc<ServoShellWindow> {
+        let window = Rc::new(ServoShellWindow::new_private(platform_window.clone()));
+        window.create_and_activate_toplevel_webview(self.clone(), initial_url);
+        self.windows
+            .borrow_mut()
+            .insert(window.id(), window.clone());
+
         if platform_window.has_platform_focus() {
             self.focus_window(window.clone());
         }
@@ -676,10 +695,32 @@ impl WebViewDelegate for RunningAppState {
     }
 
     fn notify_history_changed(&self, webview: WebView, _entries: Vec<Url>, _current: usize) {
+        // Record the current URL in browsing history (skip in private windows).
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        {
+            let window = self.window_for_webview_id(webview.id());
+            if !window.is_private() {
+                if let Some(url) = webview.url() {
+                    let title = webview.page_title().unwrap_or_default();
+                    crate::desktop::browser_storage::record_visit(url.as_str(), &title);
+                }
+            }
+        }
         self.window_for_webview_id(webview.id()).set_needs_update();
     }
 
     fn notify_page_title_changed(&self, webview: WebView, _: Option<String>) {
+        // Update history entry with the new page title (skip in private windows).
+        #[cfg(not(any(target_os = "android", target_env = "ohos")))]
+        {
+            let window = self.window_for_webview_id(webview.id());
+            if !window.is_private() {
+                if let Some(url) = webview.url() {
+                    let title = webview.page_title().unwrap_or_default();
+                    crate::desktop::browser_storage::record_visit(url.as_str(), &title);
+                }
+            }
+        }
         self.window_for_webview_id(webview.id()).set_needs_update();
     }
 
@@ -733,6 +774,17 @@ impl WebViewDelegate for RunningAppState {
     }
 
     fn notify_closed(&self, webview: WebView) {
+        // Cookie auto-shred: clear cookies for the closing tab's site.
+        if pref!(privacy_cookie_auto_shred) {
+            if let Some(url) = webview.url() {
+                if let Some(host) = url.host_str() {
+                    let host = host.to_string();
+                    self.servo()
+                        .site_data_manager()
+                        .clear_site_data(&[&host], StorageType::Cookies);
+                }
+            }
+        }
         self.window_for_webview_id(webview.id())
             .close_webview(webview.id())
     }

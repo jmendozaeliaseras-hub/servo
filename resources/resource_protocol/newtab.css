@@ -10,116 +10,185 @@ body {
 }
 
 body {
-  font-family: sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
   font-weight: 400;
   line-height: 1.5;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
-img {
-  margin-bottom: 1em;
-  width: 25vw;
-}
-
-form {
-  margin: 1em;
+main {
   display: flex;
-  justify-items: center;
-  gap: 1.0em;
-}
-
-input {
-  border-width: 0;
-  border-radius: 5px;
-  height: 2.5em;
-  width: 50vw;
-  text-indent: 3px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-
-/* This should not be needed but paper over missing default styles */
-button {
-  padding-inline: 8px;
-  border-radius: 5px;
-  border: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  /* Servo has trouble with button styling */
-  display: flex;
-  justify-items: center;
+  flex-direction: column;
   align-items: center;
-  line-height: 1;
+  max-width: 640px;
+  width: 100%;
+  padding: 2em;
 }
 
-button:hover {
-  cursor: pointer;
+/* ── Brand ────────────────────────────────────── */
+
+.brand {
+  text-align: center;
+  margin-bottom: 2em;
 }
 
-a {
-  cursor: pointer;
-  text-decoration: none;
+.shield-icon {
+  margin-bottom: 0.5em;
 }
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.8em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0.25em 0 0;
+  font-size: 0.95em;
+  opacity: 0.6;
+}
+
+/* ── Search ───────────────────────────────────── */
+
+.search-form {
+  width: 100%;
+  margin-bottom: 2.5em;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  height: 3em;
+  padding: 0 1em;
+  gap: 0.75em;
+  transition: box-shadow 0.2s;
+}
+
+.search-box:focus-within {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.search-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.search-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  height: 100%;
+  font-size: 1em;
+}
+
+/* ── Stats ────────────────────────────────────── */
+
+.stats {
+  display: flex;
+  gap: 1.5em;
+  margin-bottom: 2em;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1.25em 1.5em;
+  border-radius: 10px;
+  min-width: 130px;
+}
+
+.stat-number {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin-top: 0.25em;
+}
+
+/* ── Privacy note ─────────────────────────────── */
+
+.privacy-note {
+  font-size: 0.8em;
+  opacity: 0.5;
+  text-align: center;
+}
+
+/* ── Light theme ──────────────────────────────── */
 
 :root {
-  --theme-color-primary: #1191e8;
-  --theme-color-secondary: #42bf64;
-}
-
-/* These link colors work well for both light and dark mode */
-a {
-  color: var(--theme-color-primary);
-}
-
-a:hover {
-  color: var(--theme-color-secondary);
+  --accent: #2d7ff9;
+  --accent-hover: #1a6de0;
+  --stat-accent: #10b981;
 }
 
 @media (prefers-color-scheme: light) {
-  .dark {
-    display: none;
-  }
-
   body {
-    background: #f9f9f9;
+    background: #f5f5f7;
+    color: #1d1d1f;
   }
 
-  input {
-    background-color: white;
+  .shield-icon {
+    color: var(--accent);
   }
 
-  button {
-    background-color: var(--theme-color-secondary);
-    color: white;
+  .search-box {
+    background: white;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1);
   }
 
-  button:hover {
-    background-color: #3baa59;
+  .search-box input {
+    color: #1d1d1f;
+  }
+
+  .stat-card {
+    background: white;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  .stat-number {
+    color: var(--stat-accent);
   }
 }
 
+/* ── Dark theme ───────────────────────────────── */
+
 @media (prefers-color-scheme: dark) {
-  .light {
-    display: none;
-  }
-
   body {
-    background-color: #121619;
-    color: hsl(0, 0%, 96%);
+    background: #0d1117;
+    color: #e6edf3;
   }
 
-  input {
-    background-color: #333;
-    color: white;
+  .shield-icon {
+    color: #58a6ff;
   }
 
-  button {
-    background-color: #333;
-    color: var(--theme-color-secondary);
+  .search-box {
+    background: #161b22;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   }
 
-  button:hover {
-    background-color: #292929;
+  .search-box input {
+    color: #e6edf3;
+  }
+
+  .stat-card {
+    background: #161b22;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .stat-number {
+    color: #3fb950;
   }
 }

@@ -3,18 +3,48 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Servo - New Tab</title>
+    <title>New Tab</title>
     <link rel="stylesheet" href="resource:///newtab.css" />
   </head>
   <body>
-    <a href="https://servo.org">
-      <img class="light" src="resource:///servo-color-positive-no-container.svg" draggable="false"/>
-      <img class="dark" src="resource:///servo-color-negative-no-container.svg" draggable="false"/>
-    </a>
-    <form action="https://duckduckgo.com/html/">
-      <input name="q" placeholder="Search the web…" autofocus />
-      <button type="submit">Go!</button>
-    </form>
-    <a href="https://servo.org">Home</a>
+    <main>
+      <div class="brand">
+        <svg class="shield-icon" viewBox="0 0 24 24" width="72" height="72" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <h1>Private Browser</h1>
+        <p class="tagline">Fast. Private. Yours.</p>
+      </div>
+
+      <form action="https://duckduckgo.com/html/" class="search-form">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input name="q" placeholder="Search with DuckDuckGo..." autofocus />
+        </div>
+      </form>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number" id="ads-blocked">0</div>
+          <div class="stat-label">Ads Blocked</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="trackers-blocked">0</div>
+          <div class="stat-label">Trackers Blocked</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="https-upgrades">0</div>
+          <div class="stat-label">HTTPS Upgrades</div>
+        </div>
+      </div>
+
+      <div class="privacy-note">
+        Content blocking active &middot; Third-party cookies blocked &middot; Fingerprint protection on
+      </div>
+    </main>
   </body>
 </html>

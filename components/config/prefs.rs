@@ -303,12 +303,28 @@ pub struct Preferences {
     /// The weight of the http memory cache
     /// Notice that this is not equal to the number of different urls in the cache.
     pub network_http_cache_size: u64,
+    /// Send DNT (Do Not Track) header with all requests.
+    pub network_dnt_enabled: bool,
+    /// Send Sec-GPC (Global Privacy Control) header with all requests.
+    pub network_gpc_enabled: bool,
+    /// Automatically upgrade http:// URLs to https://.
+    pub network_https_upgrade_enabled: bool,
     pub network_local_directory_listing_enabled: bool,
     pub network_mime_sniff: bool,
+    /// Referrer policy: "no-referrer", "strict-origin-when-cross-origin", or "same-origin".
+    pub network_referrer_policy: String,
+    /// Cookie policy: "allow-all", "block-third-party", or "block-all".
+    pub network_cookie_policy: String,
     /// Force the use of `rust-webpki` verification for CA roots. If this is false (the
     /// default), then `rustls-platform-verifier` will be used, except on Android where
     /// `rust-webpki` is always used.
     pub network_use_webpki_roots: bool,
+    /// Enable ad/tracker content blocking via filter lists.
+    pub privacy_content_blocking_enabled: bool,
+    /// Enable canvas fingerprint noise injection.
+    pub privacy_fingerprint_protection_enabled: bool,
+    /// Auto-delete cookies when a tab is closed (opt-in).
+    pub privacy_cookie_auto_shred: bool,
     /// The length of the session history, in navigations, for each `WebView. Back-forward
     /// cache entries that are more than `session_history_max_length` steps in the future or
     /// `session_history_max_length` steps in the past will be discarded. Navigating forward
@@ -503,9 +519,17 @@ impl Preferences {
             network_https_proxy_uri: String::new(),
             network_http_no_proxy: String::new(),
             network_http_cache_size: 5000,
+            network_dnt_enabled: true,
+            network_gpc_enabled: true,
+            network_https_upgrade_enabled: true,
             network_local_directory_listing_enabled: true,
             network_mime_sniff: false,
+            network_referrer_policy: String::new(), // empty = strict-origin-when-cross-origin
+            network_cookie_policy: String::new(),   // empty = block-third-party
             network_use_webpki_roots: false,
+            privacy_content_blocking_enabled: true,
+            privacy_fingerprint_protection_enabled: true,
+            privacy_cookie_auto_shred: false,
             session_history_max_length: 20,
             shell_background_color_rgba: [1.0, 1.0, 1.0, 1.0],
             threadpools_async_runtime_workers_max: 6,

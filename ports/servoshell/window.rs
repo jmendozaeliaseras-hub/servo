@@ -55,6 +55,8 @@ pub(crate) struct ServoShellWindow {
     pending_favicon_loads: RefCell<Vec<WebViewId>>,
     /// Pending [`UserInterfaceCommand`] that have yet to be processed by the main loop.
     pending_commands: RefCell<Vec<UserInterfaceCommand>>,
+    /// Whether this is a private browsing window (no history, cookies cleared on close).
+    is_private: bool,
 }
 
 impl ServoShellWindow {
@@ -67,7 +69,25 @@ impl ServoShellWindow {
             needs_repaint: Default::default(),
             pending_favicon_loads: Default::default(),
             pending_commands: Default::default(),
+            is_private: false,
         }
+    }
+
+    pub(crate) fn new_private(platform_window: Rc<dyn PlatformWindow>) -> Self {
+        Self {
+            webview_collection: Default::default(),
+            platform_window,
+            close_scheduled: Default::default(),
+            needs_update: Default::default(),
+            needs_repaint: Default::default(),
+            pending_favicon_loads: Default::default(),
+            pending_commands: Default::default(),
+            is_private: true,
+        }
+    }
+
+    pub(crate) fn is_private(&self) -> bool {
+        self.is_private
     }
 
     pub(crate) fn id(&self) -> ServoShellWindowId {
@@ -345,6 +365,13 @@ impl ServoShellWindow {
                         let url = Url::parse("servo:newtab").unwrap();
                         let platform_window = create_platform_window(url.clone());
                         state.open_window(platform_window, url);
+                    }
+                },
+                UserInterfaceCommand::NewPrivateWindow => {
+                    if let Some(create_platform_window) = create_platform_window {
+                        let url = Url::parse("servo:newtab").unwrap();
+                        let platform_window = create_platform_window(url.clone());
+                        state.open_private_window(platform_window, url);
                     }
                 },
             }

@@ -10,8 +10,8 @@ use dpi::PhysicalSize;
 use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{
-    Button, Key, Label, LayerId, Modifiers, PaintCallback, TopBottomPanel, Vec2, WidgetInfo,
-    WidgetType, pos2,
+    Button, Key, Label, LayerId, Modifiers, PaintCallback, SidePanel, TopBottomPanel, Vec2,
+    WidgetInfo, WidgetType, pos2,
 };
 use egui_glow::{CallbackFn, EguiGlow};
 use egui_winit::EventResponse;
@@ -26,6 +26,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::window::Window;
 
+use crate::desktop::browser_storage;
 use crate::desktop::event_loop::AppEvent;
 use crate::desktop::headed_window;
 use crate::running_app_state::{RunningAppState, UserInterfaceCommand};
@@ -59,6 +60,36 @@ pub struct Gui {
     ///
     /// These need to be cached across egui draw calls.
     favicon_textures: HashMap<WebViewId, (egui::TextureHandle, egui::load::SizedTexture)>,
+
+    /// Whether the bookmarks side panel is visible.
+    bookmarks_panel_visible: bool,
+
+    /// Whether the history side panel is visible.
+    history_panel_visible: bool,
+
+    /// Cached bookmarks list, refreshed when panel opens or bookmark toggled.
+    cached_bookmarks: Vec<browser_storage::Bookmark>,
+
+    /// Cached history entries, refreshed when panel opens.
+    cached_history: Vec<browser_storage::HistoryEntry>,
+
+    /// Search query for filtering history.
+    history_search: String,
+
+    /// Whether the downloads side panel is visible.
+    downloads_panel_visible: bool,
+
+    /// Cached downloads list, refreshed when panel opens.
+    cached_downloads: Vec<browser_storage::DownloadRecord>,
+
+    /// Whether the settings side panel is visible.
+    settings_panel_visible: bool,
+
+    /// Whether the find-in-page bar is visible.
+    find_bar_visible: bool,
+
+    /// The current find-in-page search query.
+    find_query: String,
 }
 
 fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
@@ -67,6 +98,18 @@ fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
         format!("{}…", truncated)
     } else {
         input.to_string()
+    }
+}
+
+fn format_file_size(bytes: i64) -> String {
+    const KB: i64 = 1024;
+    const MB: i64 = KB * 1024;
+    if bytes < KB {
+        format!("{} B", bytes)
+    } else if bytes < MB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
     }
 }
 
@@ -124,6 +167,16 @@ impl Gui {
             can_go_back: false,
             can_go_forward: false,
             favicon_textures: Default::default(),
+            bookmarks_panel_visible: false,
+            history_panel_visible: false,
+            cached_bookmarks: Vec::new(),
+            cached_history: Vec::new(),
+            history_search: String::new(),
+            downloads_panel_visible: false,
+            cached_downloads: Vec::new(),
+            settings_panel_visible: false,
+            find_bar_visible: false,
+            find_query: String::new(),
         }
     }
 
@@ -273,6 +326,16 @@ impl Gui {
             location,
             location_dirty,
             favicon_textures,
+            bookmarks_panel_visible,
+            history_panel_visible,
+            downloads_panel_visible,
+            settings_panel_visible,
+            cached_bookmarks,
+            cached_history,
+            history_search,
+            cached_downloads,
+            find_bar_visible,
+            find_query,
             ..
         } = self;
 
@@ -369,6 +432,133 @@ impl Gui {
                                         );
                                     }
 
+                                    // History panel toggle button.
+                                    let history_btn = ui.add(
+                                        Gui::toolbar_button("⏱")
+                                    ).on_hover_text("History (Ctrl+H)");
+                                    if history_btn.clicked() {
+                                        *history_panel_visible = !*history_panel_visible;
+                                        if *history_panel_visible {
+                                            *bookmarks_panel_visible = false;
+                                            *downloads_panel_visible = false;
+                                            *cached_history = browser_storage::get_recent_history(100);
+                                        }
+                                    }
+
+                                    // Bookmark star button — filled if current page is bookmarked.
+                                    let current_url = window.active_webview()
+                                        .and_then(|wv| wv.url())
+                                        .map(|u| u.to_string())
+                                        .unwrap_or_default();
+                                    let is_bookmarked = !current_url.is_empty() &&
+                                        browser_storage::is_bookmarked(&current_url);
+                                    let star = if is_bookmarked { "★" } else { "☆" };
+                                    let star_btn = ui.add(
+                                        Gui::toolbar_button(star)
+                                    ).on_hover_text(if is_bookmarked { "Remove bookmark (Ctrl+D)" } else { "Add bookmark (Ctrl+D)" });
+                                    if star_btn.clicked() {
+                                        if is_bookmarked {
+                                            browser_storage::remove_bookmark(&current_url);
+                                        } else if let Some(webview) = window.active_webview() {
+                                            let title = webview.page_title().unwrap_or_default();
+                                            browser_storage::add_bookmark(&current_url, &title);
+                                        }
+                                        *cached_bookmarks = browser_storage::get_all_bookmarks();
+                                    }
+
+                                    // Bookmarks panel toggle button.
+                                    let bm_btn = ui.add(
+                                        Gui::toolbar_button("⛉")
+                                    ).on_hover_text("Bookmarks (Ctrl+Shift+B)");
+                                    if bm_btn.clicked() {
+                                        *bookmarks_panel_visible = !*bookmarks_panel_visible;
+                                        if *bookmarks_panel_visible {
+                                            *history_panel_visible = false;
+                                            *downloads_panel_visible = false;
+                                            *cached_bookmarks = browser_storage::get_all_bookmarks();
+                                        }
+                                    }
+
+                                    // Downloads panel toggle button.
+                                    let dl_btn = ui.add(
+                                        Gui::toolbar_button("⬇")
+                                    ).on_hover_text("Downloads (Ctrl+J)");
+                                    if dl_btn.clicked() {
+                                        *downloads_panel_visible = !*downloads_panel_visible;
+                                        if *downloads_panel_visible {
+                                            *bookmarks_panel_visible = false;
+                                            *history_panel_visible = false;
+                                            *cached_downloads = browser_storage::get_recent_downloads(50);
+                                        }
+                                    }
+
+                                    // Reader mode toggle button.
+                                    let reader_btn = ui.add(
+                                        Gui::toolbar_button("📖")
+                                    ).on_hover_text("Reader mode");
+                                    if reader_btn.clicked() {
+                                        if let Some(webview) = window.active_webview() {
+                                            let script = include_str!(
+                                                "../../../resources/resource_protocol/reader-mode.js"
+                                            );
+                                            webview.evaluate_javascript(script.to_string(), |_| {});
+                                        }
+                                    }
+
+                                    // Privacy shield icon — shows per-site settings popup.
+                                    let shield_btn = ui.add(
+                                        Gui::toolbar_button("🛡")
+                                    ).on_hover_text("Site privacy settings");
+                                    let host = current_url.clone();
+                                    let host = url::Url::parse(&host)
+                                        .ok()
+                                        .and_then(|u| u.host_str().map(|s| s.to_string()))
+                                        .unwrap_or_default();
+                                    egui::Popup::from_toggle_button_response(&shield_btn)
+                                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                        .show(|ui| {
+                                            ui.set_min_width(220.0);
+                                            ui.heading("Site Privacy");
+                                            ui.separator();
+
+                                            if host.is_empty() {
+                                                ui.label("No site loaded");
+                                            } else {
+                                                ui.label(format!("Host: {}", &host));
+                                                ui.separator();
+                                                let mut settings = browser_storage::get_site_settings(&host);
+                                                let mut changed = false;
+
+                                                if ui.checkbox(&mut settings.content_blocking, "Content blocking").changed() {
+                                                    changed = true;
+                                                }
+                                                if ui.checkbox(&mut settings.fingerprint_protection, "Fingerprint protection").changed() {
+                                                    changed = true;
+                                                }
+                                                if ui.checkbox(&mut settings.cookie_allow, "Allow all cookies").changed() {
+                                                    changed = true;
+                                                }
+
+                                                if changed {
+                                                    settings.host = host.clone();
+                                                    browser_storage::save_site_settings(&settings);
+                                                }
+                                            }
+                                        });
+
+                                    // Settings panel toggle button.
+                                    let settings_btn = ui.add(
+                                        Gui::toolbar_button("⚙")
+                                    ).on_hover_text("Settings");
+                                    if settings_btn.clicked() {
+                                        *settings_panel_visible = !*settings_panel_visible;
+                                        if *settings_panel_visible {
+                                            *bookmarks_panel_visible = false;
+                                            *history_panel_visible = false;
+                                            *downloads_panel_visible = false;
+                                        }
+                                    }
+
                                     let location_id = egui::Id::new("location_input");
                                     let location_field = ui.add_sized(
                                         ui.available_size(),
@@ -459,8 +649,365 @@ impl Gui {
                 });
             };
 
-            // The toolbar height is where the Context’s available rect starts.
-            // For reasons that are unclear, the TopBottomPanel’s ui cursor exceeds this by one egui
+            // Handle keyboard shortcuts for bookmarks/history panels.
+            let toggle_bookmark = ctx.input(|i| {
+                i.clone().consume_key(Modifiers::COMMAND, Key::D)
+            });
+            let toggle_history = ctx.input(|i| {
+                i.clone().consume_key(Modifiers::COMMAND, Key::H)
+            });
+            let toggle_bookmarks_panel = ctx.input(|i| {
+                i.clone().consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::B)
+            });
+
+            if toggle_bookmark {
+                if let Some(webview) = window.active_webview() {
+                    if let Some(url) = webview.url() {
+                        let url_str = url.to_string();
+                        if browser_storage::is_bookmarked(&url_str) {
+                            browser_storage::remove_bookmark(&url_str);
+                        } else {
+                            let title = webview.page_title().unwrap_or_default();
+                            browser_storage::add_bookmark(&url_str, &title);
+                        }
+                        *cached_bookmarks = browser_storage::get_all_bookmarks();
+                    }
+                }
+            }
+            if toggle_bookmarks_panel {
+                *bookmarks_panel_visible = !*bookmarks_panel_visible;
+                if *bookmarks_panel_visible {
+                    *history_panel_visible = false;
+                    *downloads_panel_visible = false;
+                    *cached_bookmarks = browser_storage::get_all_bookmarks();
+                }
+            }
+            if toggle_history {
+                *history_panel_visible = !*history_panel_visible;
+                if *history_panel_visible {
+                    *bookmarks_panel_visible = false;
+                    *downloads_panel_visible = false;
+                    *cached_history = browser_storage::get_recent_history(100);
+                }
+            }
+
+            // Render bookmarks side panel.
+            if *bookmarks_panel_visible {
+                SidePanel::left("bookmarks_panel")
+                    .default_width(250.0)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading("Bookmarks");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("X").clicked() {
+                                    *bookmarks_panel_visible = false;
+                                }
+                            });
+                        });
+                        ui.separator();
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let mut navigate_to = None;
+                            let mut remove_url = None;
+                            for bookmark in cached_bookmarks.iter() {
+                                ui.horizontal(|ui| {
+                                    let title = if bookmark.title.is_empty() {
+                                        &bookmark.url
+                                    } else {
+                                        &bookmark.title
+                                    };
+                                    if ui.link(truncate_with_ellipsis(title, 30)).on_hover_text(&bookmark.url).clicked() {
+                                        navigate_to = Some(bookmark.url.clone());
+                                    }
+                                    if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                                        remove_url = Some(bookmark.url.clone());
+                                    }
+                                });
+                            }
+                            if cached_bookmarks.is_empty() {
+                                ui.label("No bookmarks yet.\nPress Ctrl+D to bookmark a page.");
+                            }
+                            if let Some(url) = navigate_to {
+                                window.queue_user_interface_command(
+                                    UserInterfaceCommand::Go(url),
+                                );
+                            }
+                            if let Some(url) = remove_url {
+                                browser_storage::remove_bookmark(&url);
+                                *cached_bookmarks = browser_storage::get_all_bookmarks();
+                            }
+                        });
+                    });
+            }
+
+            // Render history side panel.
+            if *history_panel_visible {
+                SidePanel::left("history_panel")
+                    .default_width(300.0)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading("History");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("X").clicked() {
+                                    *history_panel_visible = false;
+                                }
+                                if ui.small_button("Clear all").clicked() {
+                                    browser_storage::clear_all_history();
+                                    cached_history.clear();
+                                }
+                            });
+                        });
+                        ui.separator();
+                        let search_changed = ui.add(
+                            egui::TextEdit::singleline(history_search)
+                                .hint_text("Search history...")
+                        ).changed();
+                        if search_changed {
+                            if history_search.is_empty() {
+                                *cached_history = browser_storage::get_recent_history(100);
+                            } else {
+                                *cached_history = browser_storage::search_history(history_search, 100);
+                            }
+                        }
+                        ui.separator();
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let mut navigate_to = None;
+                            for entry in cached_history.iter() {
+                                ui.horizontal(|ui| {
+                                    let title = if entry.title.is_empty() {
+                                        &entry.url
+                                    } else {
+                                        &entry.title
+                                    };
+                                    if ui.link(truncate_with_ellipsis(title, 35)).on_hover_text(&entry.url).clicked() {
+                                        navigate_to = Some(entry.url.clone());
+                                    }
+                                    ui.weak(format!("({})", entry.visit_count));
+                                });
+                            }
+                            if cached_history.is_empty() {
+                                ui.label("No history yet.");
+                            }
+                            if let Some(url) = navigate_to {
+                                window.queue_user_interface_command(
+                                    UserInterfaceCommand::Go(url),
+                                );
+                            }
+                        });
+                    });
+            }
+
+            // Handle Ctrl+J for downloads panel.
+            let toggle_downloads = ctx.input(|i| {
+                i.clone().consume_key(Modifiers::COMMAND, Key::J)
+            });
+            if toggle_downloads {
+                *downloads_panel_visible = !*downloads_panel_visible;
+                if *downloads_panel_visible {
+                    *bookmarks_panel_visible = false;
+                    *history_panel_visible = false;
+                    *cached_downloads = browser_storage::get_recent_downloads(50);
+                }
+            }
+
+            // Render downloads side panel.
+            if *downloads_panel_visible {
+                SidePanel::left("downloads_panel")
+                    .default_width(300.0)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading("Downloads");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("X").clicked() {
+                                    *downloads_panel_visible = false;
+                                }
+                                if ui.small_button("Clear all").clicked() {
+                                    browser_storage::clear_all_downloads();
+                                    cached_downloads.clear();
+                                }
+                            });
+                        });
+                        ui.separator();
+                        ui.label("Saved pages appear here (Ctrl+S to save).");
+                        ui.separator();
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for dl in cached_downloads.iter() {
+                                ui.horizontal(|ui| {
+                                    ui.label(truncate_with_ellipsis(&dl.filename, 30))
+                                        .on_hover_text(&dl.path);
+                                    let size_str = format_file_size(dl.size_bytes);
+                                    ui.weak(size_str);
+                                });
+                            }
+                            if cached_downloads.is_empty() {
+                                ui.label("No downloads yet.");
+                            }
+                        });
+                    });
+            }
+
+            // Render settings side panel.
+            if *settings_panel_visible {
+                SidePanel::right("settings_panel")
+                    .default_width(300.0)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading("Settings");
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("X").clicked() {
+                                    *settings_panel_visible = false;
+                                }
+                            });
+                        });
+                        ui.separator();
+
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            // — Privacy section —
+                            ui.strong("Privacy");
+                            ui.add_space(4.0);
+
+                            let prefs = servo::prefs::get();
+                            let mut content_blocking = prefs.privacy_content_blocking_enabled;
+                            let mut fingerprint_protection = prefs.privacy_fingerprint_protection_enabled;
+                            let mut https_upgrade = prefs.network_https_upgrade_enabled;
+                            let mut dnt = prefs.network_dnt_enabled;
+                            let mut gpc = prefs.network_gpc_enabled;
+                            let mut cookie_auto_shred = prefs.privacy_cookie_auto_shred;
+                            let cookie_policy = prefs.network_cookie_policy.clone();
+                            let referrer_policy = prefs.network_referrer_policy.clone();
+                            drop(prefs);
+
+                            let mut changed = false;
+                            if ui.checkbox(&mut content_blocking, "Block ads & trackers").changed() {
+                                changed = true;
+                            }
+                            if ui.checkbox(&mut fingerprint_protection, "Fingerprint protection").changed() {
+                                changed = true;
+                            }
+                            if ui.checkbox(&mut https_upgrade, "Auto-upgrade to HTTPS").changed() {
+                                changed = true;
+                            }
+                            if ui.checkbox(&mut dnt, "Send Do-Not-Track header").changed() {
+                                changed = true;
+                            }
+                            if ui.checkbox(&mut gpc, "Send Global Privacy Control").changed() {
+                                changed = true;
+                            }
+                            if ui.checkbox(&mut cookie_auto_shred, "Delete cookies on tab close").changed() {
+                                changed = true;
+                            }
+
+                            if changed {
+                                let mut p = servo::prefs::get().clone();
+                                p.privacy_content_blocking_enabled = content_blocking;
+                                p.privacy_fingerprint_protection_enabled = fingerprint_protection;
+                                p.network_https_upgrade_enabled = https_upgrade;
+                                p.network_dnt_enabled = dnt;
+                                p.network_gpc_enabled = gpc;
+                                p.privacy_cookie_auto_shred = cookie_auto_shred;
+                                servo::prefs::set(p);
+                            }
+
+                            ui.add_space(4.0);
+                            ui.label(format!("Cookie policy: {}", cookie_policy));
+                            ui.label(format!("Referrer policy: {}", referrer_policy));
+
+                            ui.add_space(8.0);
+                            ui.separator();
+
+                            // — About section —
+                            ui.strong("About");
+                            ui.add_space(4.0);
+                            ui.label("Private Browser");
+                            ui.label("Built on Servo (Mozilla MPL-2.0)");
+                            ui.weak("Rust-powered, privacy-first.");
+                        });
+                    });
+            }
+
+            // Handle Ctrl+F for find-in-page.
+            let toggle_find = ctx.input(|i| {
+                i.clone().consume_key(Modifiers::COMMAND, Key::F)
+            });
+            if toggle_find {
+                *find_bar_visible = !*find_bar_visible;
+                if !*find_bar_visible {
+                    // Clear highlights when closing.
+                    if let Some(webview) = window.active_webview() {
+                        webview.evaluate_javascript(
+                            "window.getSelection().removeAllRanges();",
+                            |_| {},
+                        );
+                    }
+                }
+            }
+            // Close find bar on Escape.
+            if *find_bar_visible && ctx.input(|i| i.clone().consume_key(Modifiers::NONE, Key::Escape)) {
+                *find_bar_visible = false;
+                if let Some(webview) = window.active_webview() {
+                    webview.evaluate_javascript(
+                        "window.getSelection().removeAllRanges();",
+                        |_| {},
+                    );
+                }
+            }
+
+            // Render find-in-page bar at the bottom.
+            if *find_bar_visible {
+                TopBottomPanel::bottom("find_bar")
+                    .frame(egui::Frame::default()
+                        .fill(ctx.style().visuals.window_fill)
+                        .inner_margin(4.0))
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Find:");
+                            let find_input = ui.add(
+                                egui::TextEdit::singleline(find_query)
+                                    .desired_width(200.0)
+                                    .hint_text("Search in page...")
+                            );
+                            // Auto-focus the find input when the bar opens.
+                            if toggle_find {
+                                find_input.request_focus();
+                            }
+                            let do_find = find_input.lost_focus() &&
+                                ui.input(|i| i.clone().key_pressed(Key::Enter));
+                            let find_next = ui.small_button("Next").clicked() || do_find;
+                            let find_prev = ui.small_button("Prev").clicked();
+
+                            if (find_next || find_prev) && !find_query.is_empty() {
+                                if let Some(webview) = window.active_webview() {
+                                    let escaped = find_query.replace('\\', "\\\\")
+                                        .replace('\'', "\\'");
+                                    let backward = if find_prev { "true" } else { "false" };
+                                    let script = format!(
+                                        "window.find('{}', false, {}, true, false, false, false);",
+                                        escaped, backward
+                                    );
+                                    webview.evaluate_javascript(script, |_| {});
+                                }
+                                // Re-focus the input after search.
+                                find_input.request_focus();
+                            }
+
+                            if ui.small_button("X").clicked() {
+                                *find_bar_visible = false;
+                                if let Some(webview) = window.active_webview() {
+                                    webview.evaluate_javascript(
+                                        "window.getSelection().removeAllRanges();",
+                                        |_| {},
+                                    );
+                                }
+                            }
+                        });
+                    });
+            }
+
+            // The toolbar height is where the Context's available rect starts.
+            // For reasons that are unclear, the TopBottomPanel's ui cursor exceeds this by one egui
             // point, but the Context is correct and the TopBottomPanel is wrong.
             *toolbar_height = Length::new(ctx.available_rect().min.y);
 

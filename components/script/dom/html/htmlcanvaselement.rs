@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 use std::cell::{Cell, RefCell};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
 use base::Epoch;
@@ -18,7 +19,7 @@ use ipc_channel::ipc::{self as ipcchan};
 use js::error::throw_type_error;
 use js::rust::{HandleObject, HandleValue};
 use layout_api::HTMLCanvasData;
-use pixels::{EncodedImageType, Snapshot};
+use pixels::{EncodedImageType, Snapshot, SnapshotAlphaMode, SnapshotPixelFormat};
 use rustc_hash::FxHashMap;
 use script_bindings::weakref::WeakRef;
 use servo_media::streams::MediaStreamType;
@@ -527,6 +528,26 @@ impl HTMLCanvasElementMethods<crate::DomTypeHolder> for HTMLCanvasElement {
             return Ok(USVString("data:,".into()));
         };
 
+        // Privacy: Add noise to canvas pixel data to prevent fingerprinting via toDataURL().
+        if servo_config::pref!(privacy_fingerprint_protection_enabled) {
+            snapshot.transform(
+                SnapshotAlphaMode::Transparent { premultiplied: false },
+                SnapshotPixelFormat::RGBA,
+            );
+            let data = snapshot.as_raw_bytes_mut();
+            let mut hasher = DefaultHasher::new();
+            std::process::id().hash(&mut hasher);
+            let mut state = hasher.finish();
+            for chunk in data.chunks_exact_mut(4) {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                chunk[0] ^= (state as u8) & 1;
+                chunk[1] ^= ((state >> 8) as u8) & 1;
+                chunk[2] ^= ((state >> 16) as u8) & 1;
+            }
+        }
+
         let image_type = EncodedImageType::from(mime_type.to_string());
 
         let mut url = format!("data:{};base64,", image_type.as_mime_type());
@@ -571,7 +592,29 @@ impl HTMLCanvasElementMethods<crate::DomTypeHolder> for HTMLCanvasElement {
         let result = if self.Width() == 0 || self.Height() == 0 {
             None
         } else {
-            self.get_image_data()
+            let mut snapshot = self.get_image_data();
+            // Privacy: Add noise to canvas pixel data to prevent fingerprinting via toBlob().
+            if servo_config::pref!(privacy_fingerprint_protection_enabled) {
+                if let Some(ref mut s) = snapshot {
+                    s.transform(
+                        SnapshotAlphaMode::Transparent { premultiplied: false },
+                        SnapshotPixelFormat::RGBA,
+                    );
+                    let data = s.as_raw_bytes_mut();
+                    let mut hasher = DefaultHasher::new();
+                    std::process::id().hash(&mut hasher);
+                    let mut state = hasher.finish();
+                    for chunk in data.chunks_exact_mut(4) {
+                        state ^= state << 13;
+                        state ^= state >> 7;
+                        state ^= state << 17;
+                        chunk[0] ^= (state as u8) & 1;
+                        chunk[1] ^= ((state >> 8) as u8) & 1;
+                        chunk[2] ^= ((state >> 16) as u8) & 1;
+                    }
+                }
+            }
+            snapshot
         };
 
         let this = Trusted::new(self);

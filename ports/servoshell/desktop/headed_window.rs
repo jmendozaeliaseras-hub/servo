@@ -23,9 +23,9 @@ use servo::{
     EmbedderControlId, GenericSender, ImeEvent, InputEvent, InputEventId, InputEventResult,
     InputMethodControl, Key, KeyState, KeyboardEvent, Modifiers, MouseButton as ServoMouseButton,
     MouseButtonAction, MouseButtonEvent, MouseLeftViewportEvent, MouseMoveEvent, NamedKey,
-    OffscreenRenderingContext, PermissionRequest, RenderingContext, ScreenGeometry, Theme,
-    TouchEvent, TouchEventType, TouchId, WebRenderDebugOption, WebView, WebViewId, WheelDelta,
-    WheelEvent, WheelMode, WindowRenderingContext, convert_rect_to_css_pixel,
+    JSValue, OffscreenRenderingContext, PermissionRequest, RenderingContext, ScreenGeometry,
+    Theme, TouchEvent, TouchEventType, TouchId, WebRenderDebugOption, WebView, WebViewId,
+    WheelDelta, WheelEvent, WheelMode, WindowRenderingContext, convert_rect_to_css_pixel,
 };
 use url::Url;
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
@@ -58,7 +58,8 @@ use crate::window::{
     ServoShellWindowId,
 };
 
-pub(crate) const INITIAL_WINDOW_TITLE: &str = "Servo";
+pub(crate) const INITIAL_WINDOW_TITLE: &str = "Private Browser";
+const BROWSER_NAME_SUFFIX: &str = " — Private Browser";
 
 pub struct HeadedWindow {
     /// The egui interface that is responsible for showing the user interface elements of
@@ -101,6 +102,8 @@ pub struct HeadedWindow {
     visible_input_methods: RefCell<Vec<EmbedderControlId>>,
     /// The position of the mouse cursor after the most recent `MouseMove` event.
     last_mouse_position: Cell<Option<Point2D<f32, DeviceIndependentPixel>>>,
+    /// Stack of recently closed tab URLs for Ctrl+Shift+T restoration.
+    recently_closed_urls: RefCell<Vec<Url>>,
 }
 
 impl HeadedWindow {
@@ -213,6 +216,7 @@ impl HeadedWindow {
             dialogs: Default::default(),
             visible_input_methods: Default::default(),
             last_mouse_position: Default::default(),
+            recently_closed_urls: RefCell::new(Vec::new()),
         })
     }
 
@@ -337,8 +341,15 @@ impl HeadedWindow {
         };
 
         let mut handled = true;
+        let recently_closed = self.recently_closed_urls.clone();
+        let recently_closed_for_reopen = self.recently_closed_urls.clone();
+        let fullscreen_state = self.fullscreen.get();
         ShortcutMatcher::from_event(key_event.event.clone())
             .shortcut(CMD_OR_CONTROL, 'W', || {
+                // Save URL before closing so Ctrl+Shift+T can restore it.
+                if let Some(url) = active_webview.url() {
+                    recently_closed.borrow_mut().push(url);
+                }
                 window.close_webview(active_webview.id());
             })
             .shortcut(CMD_OR_CONTROL, 'P', || {
@@ -443,6 +454,51 @@ impl HeadedWindow {
                 );
             })
             .shortcut(CMD_OR_CONTROL, 'Q', || state.schedule_exit())
+            // F11 — toggle fullscreen
+            .shortcut(Modifiers::empty(), Key::Named(NamedKey::F11), || {
+                self.set_fullscreen(!fullscreen_state);
+            })
+            // Ctrl+Shift+T — reopen last closed tab
+            .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, 'T', || {
+                if let Some(url) = recently_closed_for_reopen.borrow_mut().pop() {
+                    window.create_and_activate_toplevel_webview(state.clone(), url);
+                }
+            })
+            // Ctrl+Shift+D — duplicate current tab
+            .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, 'D', || {
+                if let Some(url) = active_webview.url() {
+                    window.create_and_activate_toplevel_webview(state.clone(), url);
+                }
+            })
+            // Ctrl+Shift+P — open private window
+            .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, 'P', || {
+                window.queue_user_interface_command(UserInterfaceCommand::NewPrivateWindow);
+            })
+            // Ctrl+Shift+Delete — clear browsing data
+            .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, Key::Named(NamedKey::Delete), || {
+                crate::desktop::browser_storage::clear_all_history();
+            })
+            // Ctrl+S — save page to Downloads folder
+            .shortcut(CMD_OR_CONTROL, 'S', || {
+                let url_str = active_webview
+                    .url()
+                    .map(|u| u.to_string())
+                    .unwrap_or_default();
+                let title = active_webview
+                    .page_title()
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or_else(|| "page".to_string());
+                active_webview.evaluate_javascript(
+                    "document.documentElement.outerHTML",
+                    move |result| {
+                        if let Ok(JSValue::String(html)) = result {
+                            crate::desktop::browser_storage::save_page_to_downloads(
+                                &url_str, &title, &html,
+                            );
+                        }
+                    },
+                );
+            })
             .otherwise(|| handled = false);
         handled
     }
@@ -818,16 +874,17 @@ impl PlatformWindow for HeadedWindow {
     }
 
     fn update_user_interface_state(&self, _: &RunningAppState, window: &ServoShellWindow) -> bool {
+        let private_suffix = if window.is_private() { " (Private)" } else { "" };
         let title = window
             .active_webview()
             .and_then(|webview| {
                 webview
                     .page_title()
                     .filter(|title| !title.is_empty())
-                    .map(|title| title.to_string())
-                    .or_else(|| webview.url().map(|url| url.to_string()))
+                    .map(|title| format!("{}{}{}", title, BROWSER_NAME_SUFFIX, private_suffix))
+                    .or_else(|| webview.url().map(|url| format!("{}{}{}", url, BROWSER_NAME_SUFFIX, private_suffix)))
             })
-            .unwrap_or_else(|| INITIAL_WINDOW_TITLE.to_string());
+            .unwrap_or_else(|| format!("{}{}", INITIAL_WINDOW_TITLE, private_suffix));
         if title != *self.last_title.borrow() {
             self.winit_window.set_title(&title);
             *self.last_title.borrow_mut() = title;
