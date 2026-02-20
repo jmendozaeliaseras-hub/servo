@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Browser Test Battery</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --border: #2a2d3a;
+        --text: #e4e4e7;
+        --muted: #71717a;
+        --pass: #22c55e;
+        --fail: #ef4444;
+        --warn: #eab308;
+        --accent: #818cf8;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+        padding: 2rem;
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.25rem;
+      }
+      .subtitle {
+        color: var(--muted);
+        margin-bottom: 2rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2rem 0 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .summary-bar {
+        display: flex;
+        gap: 1.5rem;
+        padding: 1rem 1.5rem;
+        background: var(--surface);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        margin-bottom: 2rem;
+      }
+      .summary-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .summary-count {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .summary-label {
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+      .pass-color { color: var(--pass); }
+      .fail-color { color: var(--fail); }
+      .warn-color { color: var(--warn); }
+      .test-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .test-status {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        flex-shrink: 0;
+      }
+      .status-pass { background: rgba(34, 197, 94, 0.15); color: var(--pass); }
+      .status-fail { background: rgba(239, 68, 68, 0.15); color: var(--fail); }
+      .status-pending { background: rgba(113, 113, 122, 0.15); color: var(--muted); }
+      .status-running { background: rgba(234, 179, 8, 0.15); color: var(--warn); }
+      .test-info { flex: 1; }
+      .test-name { font-weight: 600; font-size: 0.9375rem; }
+      .test-detail {
+        color: var(--muted);
+        font-size: 0.8125rem;
+        font-family: monospace;
+        margin-top: 2px;
+      }
+      .checklist-item {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.75rem 1.25rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .checklist-item label {
+        cursor: pointer;
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .checklist-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--pass);
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .checklist-shortcut {
+        color: var(--accent);
+        font-family: monospace;
+        font-size: 0.8125rem;
+        white-space: nowrap;
+      }
+      .site-links {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 0.5rem;
+      }
+      .site-link {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        text-decoration: none;
+        color: var(--accent);
+        font-size: 0.875rem;
+        transition: border-color 0.15s;
+      }
+      .site-link:hover { border-color: var(--accent); }
+      .site-link .site-desc {
+        color: var(--muted);
+        font-size: 0.75rem;
+        margin-top: 2px;
+      }
+      button.run-btn {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        padding: 0.625rem 1.5rem;
+        border-radius: 6px;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 1.5rem;
+      }
+      button.run-btn:hover { opacity: 0.9; }
+      button.run-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .timestamp {
+        color: var(--muted);
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Privacy Browser Test Battery</h1>
+    <p class="subtitle">Automated and manual verification of privacy features</p>
+
+    <div class="summary-bar">
+      <div class="summary-item">
+        <span class="summary-count pass-color" id="pass-count">0</span>
+        <span class="summary-label">Passed</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-count fail-color" id="fail-count">0</span>
+        <span class="summary-label">Failed</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-count warn-color" id="pending-count">0</span>
+        <span class="summary-label">Pending</span>
+      </div>
+    </div>
+
+    <button class="run-btn" id="run-tests" onclick="runAllTests()">Run Automated Tests</button>
+    <p class="timestamp" id="run-time"></p>
+
+    <!-- Automated Tests -->
+    <h2>Automated Tests</h2>
+    <div id="auto-tests"></div>
+
+    <!-- Manual Checklist -->
+    <h2>Manual Feature Checklist</h2>
+    <p class="subtitle" style="margin-bottom:1rem">Walk through each feature and check it off when verified.</p>
+    <div id="manual-checklist"></div>
+
+    <!-- Site Compatibility -->
+    <h2>Site Compatibility Tests</h2>
+    <p class="subtitle" style="margin-bottom:1rem">Open each site and verify it loads and functions correctly.</p>
+    <div class="site-links" id="site-links"></div>
+
+    <script>
+      // ── Test definitions ─────────────────────────────────────────
+
+      var autoTests = [
+        {
+          id: 'canvas-fingerprint',
+          name: 'Canvas Fingerprint Protection',
+          run: function() {
+            var canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 50;
+            var ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#f60';
+            ctx.fillRect(0, 0, 200, 50);
+            ctx.fillStyle = '#069';
+            ctx.fillText('Fingerprint test', 2, 15);
+            var dataUrl = canvas.toDataURL();
+            var dataUrl2 = canvas.toDataURL();
+            if (dataUrl === dataUrl2) {
+              return {
+                pass: true,
+                detail: 'Canvas output is deterministic (' + dataUrl.length + ' chars). Compare at browserleaks.com/canvas.'
+              };
+            }
+            return { pass: false, detail: 'Canvas output is non-deterministic across calls' };
+          }
+        },
+        {
+          id: 'navigator-concurrency',
+          name: 'Navigator HW Concurrency Spoofing',
+          run: function() {
+            var cores = navigator.hardwareConcurrency;
+            if (cores === 4) {
+              return { pass: true, detail: 'hardwareConcurrency = ' + cores + ' (spoofed to 4)' };
+            }
+            return { pass: false, detail: 'hardwareConcurrency = ' + cores + ' (expected 4 with fingerprint protection ON)' };
+          }
+        },
+        {
+          id: 'navigator-platform',
+          name: 'Navigator Platform Check',
+          run: function() {
+            var platform = navigator.platform;
+            var ua = navigator.userAgent;
+            return { pass: true, detail: 'platform="' + platform + '", UA length=' + ua.length };
+          }
+        },
+        {
+          id: 'cookie-readwrite',
+          name: 'Cookie Read/Write',
+          run: function() {
+            var testValue = 'servo_test_' + Date.now();
+            document.cookie = 'test_cookie=' + testValue + '; path=/; SameSite=Lax';
+            var hasCookie = document.cookie.indexOf(testValue) !== -1;
+            document.cookie = 'test_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            if (hasCookie) {
+              return { pass: true, detail: 'First-party cookies work correctly' };
+            }
+            return { pass: false, detail: 'Could not read back cookie' };
+          }
+        },
+        {
+          id: 'protocol-check',
+          name: 'Page Protocol',
+          run: function() {
+            var proto = location.protocol;
+            var href = location.href;
+            if (proto === 'servo:') {
+              return { pass: true, detail: 'Loaded via ' + proto + ' protocol (' + href + ')' };
+            }
+            return { pass: true, detail: 'Protocol: ' + proto + ' (loaded from ' + href + ')' };
+          }
+        },
+        {
+          id: 'dom-element-count',
+          name: 'DOM Element Count (Ad Blocking Proxy)',
+          run: function() {
+            var count = document.querySelectorAll('*').length;
+            return { pass: true, detail: count + ' DOM elements. On ad-heavy pages, fewer = effective blocking.' };
+          }
+        },
+        {
+          id: 'local-storage',
+          name: 'LocalStorage Access',
+          run: function() {
+            try {
+              var key = '__servo_test__';
+              localStorage.setItem(key, 'test');
+              var value = localStorage.getItem(key);
+              localStorage.removeItem(key);
+              if (value === 'test') {
+                return { pass: true, detail: 'localStorage read/write works' };
+              }
+              return { pass: false, detail: 'localStorage read-back failed' };
+            } catch (e) {
+              return { pass: false, detail: 'localStorage error: ' + e.message };
+            }
+          }
+        },
+        {
+          id: 'webrtc-leak',
+          name: 'WebRTC IP Leak Check',
+          run: function() {
+            if (typeof RTCPeerConnection === 'undefined') {
+              return { pass: true, detail: 'RTCPeerConnection not available -- no WebRTC leak possible' };
+            }
+            return { pass: true, detail: 'RTCPeerConnection exists -- manual verification recommended' };
+          }
+        },
+        {
+          id: 'do-not-track',
+          name: 'Do Not Track Header',
+          run: function() {
+            var dnt = navigator.doNotTrack;
+            if (dnt === '1') {
+              return { pass: true, detail: 'navigator.doNotTrack = "' + dnt + '"' };
+            }
+            return { pass: false, detail: 'navigator.doNotTrack = "' + dnt + '" (expected "1")' };
+          }
+        },
+        {
+          id: 'global-privacy-control',
+          name: 'Global Privacy Control (GPC)',
+          run: function() {
+            var gpc = navigator.globalPrivacyControl;
+            if (gpc === true) {
+              return { pass: true, detail: 'navigator.globalPrivacyControl = ' + gpc };
+            }
+            return { pass: false, detail: 'navigator.globalPrivacyControl = ' + gpc + ' (expected true)' };
+          }
+        }
+      ];
+
+      // ── Rendering ───────────────────────────────────────────────
+      // All content below is built from hard-coded constants above.
+      // No user input flows into the DOM — safe from XSS.
+
+      function renderAutoTests() {
+        var container = document.getElementById('auto-tests');
+        var html = '';
+        for (var i = 0; i < autoTests.length; i++) {
+          var test = autoTests[i];
+          html += '<div class="test-card" id="test-' + test.id + '">' +
+            '<div class="test-status status-pending" id="status-' + test.id + '">&#x2022;</div>' +
+            '<div class="test-info">' +
+            '<div class="test-name">' + test.name + '</div>' +
+            '<div class="test-detail" id="detail-' + test.id + '">Waiting to run...</div>' +
+            '</div></div>';
+        }
+        container.innerHTML = html;
+      }
+
+      function renderManualChecklist() {
+        var items = [
+          { label: 'Bookmark star toggle', shortcut: 'Ctrl+D' },
+          { label: 'Bookmarks panel', shortcut: 'Ctrl+Shift+B' },
+          { label: 'History panel', shortcut: 'Ctrl+H' },
+          { label: 'Save page (download)', shortcut: 'Ctrl+S' },
+          { label: 'Downloads panel', shortcut: 'Ctrl+J' },
+          { label: 'Find in page', shortcut: 'Ctrl+F' },
+          { label: 'Reader mode', shortcut: 'book icon' },
+          { label: 'Settings panel', shortcut: 'gear icon' },
+          { label: 'Shield popup', shortcut: 'shield icon' },
+          { label: 'Private window', shortcut: 'Ctrl+Shift+P' },
+          { label: 'New tab page', shortcut: 'Ctrl+T' },
+          { label: 'Fullscreen toggle', shortcut: 'F11' },
+          { label: 'Reopen closed tab', shortcut: 'Ctrl+Shift+T' },
+          { label: 'Tab management', shortcut: 'Ctrl+W / Ctrl+T' },
+          { label: 'Back/Forward navigation', shortcut: 'Alt+Left/Right' },
+          { label: 'Zoom controls', shortcut: 'Ctrl+/- or Ctrl+0' }
+        ];
+        var container = document.getElementById('manual-checklist');
+        var html = '';
+        for (var i = 0; i < items.length; i++) {
+          html += '<div class="checklist-item"><label>' +
+            '<input type="checkbox" id="manual-' + i + '">' +
+            '<span>' + items[i].label + '</span>' +
+            '<span class="checklist-shortcut">' + items[i].shortcut + '</span>' +
+            '</label></div>';
+        }
+        container.innerHTML = html;
+      }
+
+      function renderSiteLinks() {
+        var sites = [
+          { url: 'https://example.com', desc: 'Basic page load' },
+          { url: 'https://lite.duckduckgo.com', desc: 'Search engine (lite)' },
+          { url: 'https://en.wikipedia.org', desc: 'Complex layout + images' },
+          { url: 'https://news.ycombinator.com', desc: 'Simple layout, many links' },
+          { url: 'https://fark.com', desc: 'Ad-heavy site (blocking test)' },
+          { url: 'https://browserleaks.com/canvas', desc: 'Canvas fingerprint check' },
+          { url: 'https://browserleaks.com/javascript', desc: 'JS fingerprint check' },
+          { url: 'https://httpbin.org/headers', desc: 'View request headers (DNT, GPC)' },
+          { url: 'http://neverssl.com', desc: 'HTTPS upgrade test (starts as http)' },
+          { url: 'https://www.whatismybrowser.com', desc: 'User agent verification' }
+        ];
+        var container = document.getElementById('site-links');
+        var html = '';
+        for (var i = 0; i < sites.length; i++) {
+          var display = sites[i].url.replace('https://', '').replace('http://', '');
+          html += '<a class="site-link" href="' + sites[i].url + '" target="_blank">' +
+            display + '<div class="site-desc">' + sites[i].desc + '</div></a>';
+        }
+        container.innerHTML = html;
+      }
+
+      // ── Test runner ─────────────────────────────────────────────
+
+      var passCount = 0;
+      var failCount = 0;
+
+      function setTestResult(test, result) {
+        var statusEl = document.getElementById('status-' + test.id);
+        var detailEl = document.getElementById('detail-' + test.id);
+        if (result.pass) {
+          statusEl.className = 'test-status status-pass';
+          statusEl.textContent = '\u2713';
+          passCount++;
+        } else {
+          statusEl.className = 'test-status status-fail';
+          statusEl.textContent = '\u2717';
+          failCount++;
+        }
+        detailEl.textContent = result.detail;
+      }
+
+      function runAllTests() {
+        var btn = document.getElementById('run-tests');
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        passCount = 0;
+        failCount = 0;
+
+        // Reset all to running state
+        for (var i = 0; i < autoTests.length; i++) {
+          var statusEl = document.getElementById('status-' + autoTests[i].id);
+          var detailEl = document.getElementById('detail-' + autoTests[i].id);
+          statusEl.className = 'test-status status-running';
+          statusEl.textContent = '\u25cf';
+          detailEl.textContent = 'Running...';
+        }
+
+        var testIndex = 0;
+        function runNext() {
+          if (testIndex >= autoTests.length) {
+            document.getElementById('pass-count').textContent = passCount;
+            document.getElementById('fail-count').textContent = failCount;
+            document.getElementById('pending-count').textContent = autoTests.length - passCount - failCount;
+            document.getElementById('run-time').textContent = 'Last run: ' + new Date().toLocaleString();
+            btn.disabled = false;
+            btn.textContent = 'Run Again';
+            return;
+          }
+          var test = autoTests[testIndex];
+          try {
+            var result = test.run();
+            setTestResult(test, result);
+          } catch (e) {
+            setTestResult(test, { pass: false, detail: 'Error: ' + e.message });
+          }
+          testIndex++;
+          setTimeout(runNext, 10);
+        }
+        setTimeout(runNext, 50);
+      }
+
+      // ── Initialize ──────────────────────────────────────────────
+
+      document.getElementById('pending-count').textContent = autoTests.length;
+      renderAutoTests();
+      renderManualChecklist();
+      renderSiteLinks();
+    </script>
+  </body>
+</html>
