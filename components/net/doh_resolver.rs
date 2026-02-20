@@ -11,7 +11,7 @@ use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
-use log::{debug, warn};
+use log::debug;
 use parking_lot::Mutex;
 
 struct CacheEntry {

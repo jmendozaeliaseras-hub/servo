@@ -710,7 +710,7 @@ impl Gui {
                 TopBottomPanel::top("favorites_bar")
                     .frame(egui::Frame::default()
                         .fill(ctx.style().visuals.window_fill)
-                        .inner_margin(egui::Margin::symmetric(6.0, 2.0)))
+                        .inner_margin(egui::Margin::symmetric(6, 2)))
                     .show(ctx, |ui| {
                         ui.allocate_ui_with_layout(
                             ui.available_size(),

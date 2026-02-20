@@ -557,31 +557,23 @@ fn get_bookmarks_in_folder_with_conn(conn: &Connection, folder_id: Option<i64>) 
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
-    let result = if let Some(fid) = param_value {
-        stmt.query_map(params![fid], |row| {
-            Ok(Bookmark {
-                id: row.get(0)?,
-                url: row.get(1)?,
-                title: row.get(2)?,
-                folder_id: row.get(3)?,
-                position: row.get(4)?,
-                created_at: row.get(5)?,
-            })
-        })
-    } else {
-        stmt.query_map([], |row| {
-            Ok(Bookmark {
-                id: row.get(0)?,
-                url: row.get(1)?,
-                title: row.get(2)?,
-                folder_id: row.get(3)?,
-                position: row.get(4)?,
-                created_at: row.get(5)?,
-            })
+    let map_row = |row: &rusqlite::Row| -> rusqlite::Result<Bookmark> {
+        Ok(Bookmark {
+            id: row.get(0)?,
+            url: row.get(1)?,
+            title: row.get(2)?,
+            folder_id: row.get(3)?,
+            position: row.get(4)?,
+            created_at: row.get(5)?,
         })
     };
+    let result = if let Some(fid) = param_value {
+        stmt.query_map(params![fid], map_row)
+    } else {
+        stmt.query_map([], map_row)
+    };
     match result {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect::<Vec<Bookmark>>(),
         Err(_) => Vec::new(),
     }
 }
