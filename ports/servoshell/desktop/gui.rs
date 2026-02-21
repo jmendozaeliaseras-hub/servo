@@ -28,6 +28,7 @@ use winit::window::Window;
 
 use crate::desktop::browser_storage;
 use crate::desktop::event_loop::AppEvent;
+use crate::desktop::extension_manager::ExtensionManager;
 use crate::desktop::headed_window;
 use crate::running_app_state::{RunningAppState, UserInterfaceCommand};
 use crate::window::ServoShellWindow;
@@ -96,6 +97,13 @@ pub struct Gui {
 
     /// Cached bookmark folders.
     cached_folders: Vec<browser_storage::BookmarkFolder>,
+
+    /// The content rect from the last egui frame (area not covered by panels).
+    /// Used for hit-testing: anything outside this rect is an egui UI element.
+    content_rect: Option<egui::Rect>,
+
+    /// Extension manager for Chrome-like extension support.
+    extension_manager: ExtensionManager,
 }
 
 fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
@@ -193,6 +201,8 @@ impl Gui {
             find_query: String::new(),
             applied_theme: theme_pref,
             cached_folders: Vec::new(),
+            content_rect: None,
+            extension_manager: ExtensionManager::new(),
         }
     }
 
@@ -224,12 +234,15 @@ impl Gui {
         self.toolbar_height
     }
 
-    /// Return true iff the given position is over the egui toolbar.
-    pub(crate) fn is_in_egui_toolbar_rect(
+    /// Return true iff the given position is over any egui UI area (toolbar, side panels, etc).
+    pub(crate) fn is_in_egui_ui_rect(
         &self,
         position: Point2D<f32, DeviceIndependentPixel>,
     ) -> bool {
-        position.y < self.toolbar_height.get()
+        match self.content_rect {
+            Some(rect) => !rect.contains(egui::pos2(position.x, position.y)),
+            None => position.y < self.toolbar_height.get(),
+        }
     }
 
     /// Create a frameless button with square sizing, as used in the toolbar.
@@ -354,6 +367,7 @@ impl Gui {
             find_query,
             applied_theme,
             cached_folders,
+            content_rect,
             ..
         } = self;
 
@@ -496,30 +510,21 @@ impl Gui {
                                         }
                                     }
 
-                                    // Bookmark star button — filled if current page is bookmarked.
-                                    let current_url = window.active_webview()
-                                        .and_then(|wv| wv.url())
-                                        .map(|u| u.to_string())
-                                        .unwrap_or_default();
-                                    let is_bookmarked = !current_url.is_empty() &&
-                                        browser_storage::is_bookmarked(&current_url);
-                                    let star = if is_bookmarked { "★" } else { "☆" };
-                                    let star_btn = ui.add(
-                                        Gui::toolbar_button(star)
-                                    ).on_hover_text(if is_bookmarked { "Remove bookmark (Ctrl+D)" } else { "Add bookmark (Ctrl+D)" });
-                                    if star_btn.clicked() {
-                                        if is_bookmarked {
-                                            browser_storage::remove_bookmark(&current_url);
-                                        } else if let Some(webview) = window.active_webview() {
-                                            let title = webview.page_title().unwrap_or_default();
-                                            browser_storage::add_bookmark(&current_url, &title);
+                                    // Extension toolbar buttons — puzzle piece for extensions with action.
+                                    {
+                                        let ext_btn = ui.add(
+                                            Gui::toolbar_button("⊕")
+                                        ).on_hover_text("Extensions");
+                                        if ext_btn.clicked() {
+                                            window.queue_user_interface_command(
+                                                UserInterfaceCommand::Go("servo:extensions".to_string()),
+                                            );
                                         }
-                                        *cached_bookmarks = browser_storage::get_all_bookmarks();
                                     }
 
                                     // Bookmarks panel toggle button.
                                     let bm_btn = ui.add(
-                                        Gui::toolbar_button("⛉")
+                                        Gui::toolbar_button("★")
                                     ).on_hover_text("Bookmarks (Ctrl+Shift+B)");
                                     if bm_btn.clicked() {
                                         *bookmarks_panel_visible = !*bookmarks_panel_visible;
@@ -545,7 +550,7 @@ impl Gui {
 
                                     // Reader mode toggle button.
                                     let reader_btn = ui.add(
-                                        Gui::toolbar_button("📖")
+                                        Gui::toolbar_button("⊟")
                                     ).on_hover_text("Reader mode");
                                     if reader_btn.clicked() {
                                         if let Some(webview) = window.active_webview() {
@@ -557,10 +562,14 @@ impl Gui {
                                     }
 
                                     // Privacy shield icon — shows per-site settings popup.
+                                    let shield_current_url = window.active_webview()
+                                        .and_then(|wv| wv.url())
+                                        .map(|u| u.to_string())
+                                        .unwrap_or_default();
                                     let shield_btn = ui.add(
-                                        Gui::toolbar_button("🛡")
+                                        Gui::toolbar_button("◈")
                                     ).on_hover_text("Site privacy settings");
-                                    let host = current_url.clone();
+                                    let host = shield_current_url.clone();
                                     let host = url::Url::parse(&host)
                                         .ok()
                                         .and_then(|u| u.host_str().map(|s| s.to_string()))
@@ -610,23 +619,73 @@ impl Gui {
                                         }
                                     }
 
+                                    // Help button — next to settings gear.
+                                    let help_btn = ui.add(
+                                        Gui::toolbar_button("?")
+                                    ).on_hover_text("Help & About");
+                                    if help_btn.clicked() {
+                                        window.queue_user_interface_command(
+                                            UserInterfaceCommand::Go("servo:help".to_string()),
+                                        );
+                                    }
+
                                     // Tor indicator when in a Tor window.
                                     if window.is_tor() {
                                         ui.colored_label(egui::Color32::from_rgb(128, 0, 255), "Tor");
                                     }
 
+                                    // Combined URL bar with star button inside.
+                                    let current_url = window.active_webview()
+                                        .and_then(|wv| wv.url())
+                                        .map(|u| u.to_string())
+                                        .unwrap_or_default();
+                                    let is_bookmarked = !current_url.is_empty() &&
+                                        browser_storage::is_bookmarked(&current_url);
+
+                                    let bar_size = ui.available_size();
+                                    let (bar_rect, _) = ui.allocate_exact_size(
+                                        bar_size,
+                                        egui::Sense::hover(),
+                                    );
+
+                                    // Draw the URL bar frame manually.
+                                    let bar_stroke = ui.visuals().widgets.inactive.bg_stroke;
+                                    ui.painter().rect_stroke(
+                                        bar_rect,
+                                        4.0,
+                                        bar_stroke,
+                                        egui::StrokeKind::Outside,
+                                    );
+
+                                    let star_width = 24.0;
+                                    let inner = bar_rect.shrink(4.0);
+                                    let text_rect = egui::Rect::from_min_max(
+                                        inner.min,
+                                        egui::pos2(inner.max.x - star_width, inner.max.y),
+                                    );
+                                    let star_rect = egui::Rect::from_min_max(
+                                        egui::pos2(inner.max.x - star_width, inner.min.y),
+                                        inner.max,
+                                    );
+
+                                    // URL text field.
                                     let location_id = egui::Id::new("location_input");
-                                    let location_field = ui.add_sized(
-                                        ui.available_size(),
+                                    let mut text_ui = ui.new_child(
+                                        egui::UiBuilder::new()
+                                            .max_rect(text_rect)
+                                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                                    );
+                                    let location_field = text_ui.add_sized(
+                                        text_rect.size(),
                                         egui::TextEdit::singleline(location)
                                             .id(location_id)
+                                            .frame(false)
                                             .hint_text("Search or enter address"),
                                     );
 
                                     if location_field.changed() {
                                         *location_dirty = true;
                                     }
-                                    // Handle adddress bar shortcut.
                                     if ui.input(|i| {
                                         if cfg!(target_os = "macos") {
                                             i.clone().consume_key(Modifiers::COMMAND, Key::L)
@@ -635,15 +694,12 @@ impl Gui {
                                                 i.clone().consume_key(Modifiers::ALT, Key::D)
                                         }
                                     }) {
-                                        // The focus request immediately makes gained_focus return true.
                                         location_field.request_focus();
                                     }
-                                    // Select address bar text when it's focused (click or shortcut).
                                     if location_field.gained_focus() {
                                         if let Some(mut state) =
                                             TextEditState::load(ui.ctx(), location_id)
                                         {
-                                            // Select the whole input.
                                             state.cursor.set_char_range(Some(CCursorRange::two(
                                                 CCursor::new(0),
                                                 CCursor::new(location.len()),
@@ -651,13 +707,46 @@ impl Gui {
                                             state.store(ui.ctx(), location_id);
                                         }
                                     }
-                                    // Navigate to address when enter is pressed in the address bar.
                                     if location_field.lost_focus() &&
                                         ui.input(|i| i.clone().key_pressed(Key::Enter))
                                     {
                                         window.queue_user_interface_command(
                                             UserInterfaceCommand::Go(location.clone()),
                                         );
+                                    }
+
+                                    // Star button inside the URL bar (right side).
+                                    let star_color = if is_bookmarked {
+                                        egui::Color32::from_rgb(255, 193, 7) // gold
+                                    } else {
+                                        ui.visuals().weak_text_color()
+                                    };
+                                    let star_text = if is_bookmarked { "★" } else { "☆" };
+                                    let mut star_ui = ui.new_child(
+                                        egui::UiBuilder::new()
+                                            .max_rect(star_rect)
+                                            .layout(egui::Layout::centered_and_justified(
+                                                egui::Direction::LeftToRight,
+                                            )),
+                                    );
+                                    let star_btn = star_ui.add(
+                                        Button::new(
+                                            egui::RichText::new(star_text).color(star_color)
+                                        )
+                                        .frame(false)
+                                    ).on_hover_text(if is_bookmarked {
+                                        "Remove bookmark (Ctrl+D)"
+                                    } else {
+                                        "Add bookmark (Ctrl+D)"
+                                    });
+                                    if star_btn.clicked() {
+                                        if is_bookmarked {
+                                            browser_storage::remove_bookmark(&current_url);
+                                        } else if let Some(webview) = window.active_webview() {
+                                            let title = webview.page_title().unwrap_or_default();
+                                            browser_storage::add_bookmark(&current_url, &title);
+                                        }
+                                        *cached_bookmarks = browser_storage::get_all_bookmarks();
                                     }
                                 },
                             );
@@ -777,49 +866,6 @@ impl Gui {
                             },
                         );
                     });
-            }
-
-            // Handle keyboard shortcuts for bookmarks/history panels.
-            let toggle_bookmark = ctx.input(|i| {
-                i.clone().consume_key(Modifiers::COMMAND, Key::D)
-            });
-            let toggle_history = ctx.input(|i| {
-                i.clone().consume_key(Modifiers::COMMAND, Key::H)
-            });
-            let toggle_bookmarks_panel = ctx.input(|i| {
-                i.clone().consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::B)
-            });
-
-            if toggle_bookmark {
-                if let Some(webview) = window.active_webview() {
-                    if let Some(url) = webview.url() {
-                        let url_str = url.to_string();
-                        if browser_storage::is_bookmarked(&url_str) {
-                            browser_storage::remove_bookmark(&url_str);
-                        } else {
-                            let title = webview.page_title().unwrap_or_default();
-                            browser_storage::add_bookmark(&url_str, &title);
-                        }
-                        *cached_bookmarks = browser_storage::get_all_bookmarks();
-                    }
-                }
-            }
-            if toggle_bookmarks_panel {
-                *bookmarks_panel_visible = !*bookmarks_panel_visible;
-                if *bookmarks_panel_visible {
-                    *history_panel_visible = false;
-                    *downloads_panel_visible = false;
-                    *cached_bookmarks = browser_storage::get_all_bookmarks();
-                    *cached_folders = browser_storage::get_all_folders();
-                }
-            }
-            if toggle_history {
-                *history_panel_visible = !*history_panel_visible;
-                if *history_panel_visible {
-                    *bookmarks_panel_visible = false;
-                    *downloads_panel_visible = false;
-                    *cached_history = browser_storage::get_recent_history(100);
-                }
             }
 
             // Render bookmarks side panel.
@@ -983,19 +1029,6 @@ impl Gui {
                             }
                         });
                     });
-            }
-
-            // Handle Ctrl+J for downloads panel.
-            let toggle_downloads = ctx.input(|i| {
-                i.clone().consume_key(Modifiers::COMMAND, Key::J)
-            });
-            if toggle_downloads {
-                *downloads_panel_visible = !*downloads_panel_visible;
-                if *downloads_panel_visible {
-                    *bookmarks_panel_visible = false;
-                    *history_panel_visible = false;
-                    *cached_downloads = browser_storage::get_recent_downloads(50);
-                }
             }
 
             // Render downloads side panel.
@@ -1290,6 +1323,7 @@ impl Gui {
             // For reasons that are unclear, the TopBottomPanel's ui cursor exceeds this by one egui
             // point, but the Context is correct and the TopBottomPanel is wrong.
             *toolbar_height = Length::new(ctx.available_rect().min.y);
+            *content_rect = Some(ctx.available_rect());
 
             let scale =
                 Scale::<_, DeviceIndependentPixel, DevicePixel>::new(ctx.pixels_per_point());
@@ -1383,6 +1417,17 @@ impl Gui {
             self.location_dirty = false;
         }
 
+        // Inject extension content scripts when page load completes.
+        if status_changed && self.load_status == LoadStatus::Complete {
+            if let Some(webview) = window.active_webview() {
+                if let Some(url) = webview.url() {
+                    if let Some(script) = self.extension_manager.build_injection_script(&url) {
+                        webview.evaluate_javascript(script, |_| {});
+                    }
+                }
+            }
+        }
+
         status_changed
     }
 
@@ -1438,6 +1483,58 @@ impl Gui {
                 false
             },
         }
+    }
+
+    /// Toggle bookmark for the current page.
+    pub(crate) fn toggle_bookmark(&mut self, window: &ServoShellWindow) {
+        if let Some(webview) = window.active_webview() {
+            if let Some(url) = webview.url() {
+                let url_str = url.to_string();
+                if browser_storage::is_bookmarked(&url_str) {
+                    browser_storage::remove_bookmark(&url_str);
+                } else {
+                    let title = webview.page_title().unwrap_or_default();
+                    browser_storage::add_bookmark(&url_str, &title);
+                }
+                self.cached_bookmarks = browser_storage::get_all_bookmarks();
+            }
+        }
+    }
+
+    /// Toggle the bookmarks side panel.
+    pub(crate) fn toggle_bookmarks_panel(&mut self) {
+        self.bookmarks_panel_visible = !self.bookmarks_panel_visible;
+        if self.bookmarks_panel_visible {
+            self.history_panel_visible = false;
+            self.downloads_panel_visible = false;
+            self.cached_bookmarks = browser_storage::get_all_bookmarks();
+            self.cached_folders = browser_storage::get_all_folders();
+        }
+    }
+
+    /// Toggle the history side panel.
+    pub(crate) fn toggle_history_panel(&mut self) {
+        self.history_panel_visible = !self.history_panel_visible;
+        if self.history_panel_visible {
+            self.bookmarks_panel_visible = false;
+            self.downloads_panel_visible = false;
+            self.cached_history = browser_storage::get_recent_history(100);
+        }
+    }
+
+    /// Toggle the downloads side panel.
+    pub(crate) fn toggle_downloads_panel(&mut self) {
+        self.downloads_panel_visible = !self.downloads_panel_visible;
+        if self.downloads_panel_visible {
+            self.bookmarks_panel_visible = false;
+            self.history_panel_visible = false;
+            self.cached_downloads = browser_storage::get_recent_downloads(50);
+        }
+    }
+
+    /// Refresh the cached bookmarks list.
+    pub(crate) fn refresh_bookmarks_cache(&mut self) {
+        self.cached_bookmarks = browser_storage::get_all_bookmarks();
     }
 
     pub(crate) fn set_zoom_factor(&self, factor: f32) {

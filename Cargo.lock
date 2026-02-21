@@ -8744,6 +8744,7 @@ dependencies = [
  "raw-window-handle",
  "rusqlite",
  "rustls",
+ "serde",
  "serde_json",
  "servo_allocator",
  "sig",

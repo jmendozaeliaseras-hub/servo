@@ -394,8 +394,8 @@ impl Preferences {
             dom_fullscreen_test: false,
             dom_gamepad_enabled: true,
             dom_geolocation_enabled: false,
-            dom_indexeddb_enabled: false,
-            dom_intersection_observer_enabled: false,
+            dom_indexeddb_enabled: true,
+            dom_intersection_observer_enabled: true,
             dom_microdata_testing_enabled: false,
             dom_uievent_which_enabled: true,
             dom_mutation_observer_enabled: true,
@@ -407,7 +407,7 @@ impl Preferences {
             dom_permissions_testing_allowed_in_nonsecure_contexts: false,
             dom_resize_observer_enabled: true,
             dom_script_asynch: true,
-            dom_serviceworker_enabled: false,
+            dom_serviceworker_enabled: true,
             dom_serviceworker_timeout_seconds: 60,
             dom_servo_helpers_enabled: false,
             dom_servoparser_async_html_tokenizer_enabled: false,
@@ -615,7 +615,7 @@ impl UserAgentPlatform {
                 if cfg!(all(target_os = "windows", target_arch = "x86_64")) =>
             {
                 format!(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; {ARCH}rv:140.0) Servo/{SERVO_VERSION} Firefox/140.0"
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Servo/{SERVO_VERSION} Firefox/140.0"
                 )
             },
             UserAgentPlatform::Desktop if cfg!(target_os = "macos") => {

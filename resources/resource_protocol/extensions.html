@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Extensions - Private Browser</title>
+    <style>
+        :root {
+            --bg: #fff;
+            --fg: #222;
+            --card-bg: #f5f5f5;
+            --card-border: #ddd;
+            --accent: #4a90d9;
+            --muted: #888;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #1a1a1a;
+                --fg: #e0e0e0;
+                --card-bg: #2a2a2a;
+                --card-border: #444;
+                --accent: #6db3f2;
+                --muted: #999;
+            }
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+        .ext-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ext-info h3 {
+            margin: 0 0 4px;
+            font-size: 16px;
+        }
+        .ext-info .version {
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .ext-info .description {
+            margin-top: 4px;
+            font-size: 14px;
+        }
+        .ext-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #ccc;
+            border-radius: 24px;
+            transition: 0.2s;
+        }
+        .toggle-slider::before {
+            content: "";
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+        input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px 0;
+            color: var(--muted);
+        }
+        .empty-state p {
+            margin: 8px 0;
+        }
+        code {
+            background: var(--card-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        #loading {
+            text-align: center;
+            padding: 24px;
+            color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+    <h1>Extensions</h1>
+    <p class="subtitle">Manage installed extensions</p>
+    <div id="loading">Loading extensions...</div>
+    <div id="extensions-list"></div>
+
+    <script>
+        async function loadExtensions() {
+            try {
+                var response = await fetch('servo:extensions-data');
+                var extensions = await response.json();
+                renderExtensions(extensions);
+            } catch (e) {
+                document.getElementById('loading').textContent = 'Failed to load extensions.';
+            }
+        }
+
+        function renderExtensions(extensions) {
+            var loading = document.getElementById('loading');
+            var list = document.getElementById('extensions-list');
+            loading.style.display = 'none';
+
+            // Clear existing content safely.
+            while (list.firstChild) {
+                list.removeChild(list.firstChild);
+            }
+
+            if (extensions.length === 0) {
+                var emptyDiv = document.createElement('div');
+                emptyDiv.className = 'empty-state';
+
+                var icon = document.createElement('p');
+                icon.style.fontSize = '32px';
+                icon.textContent = '\uD83E\uDDE9';
+                emptyDiv.appendChild(icon);
+
+                var msg = document.createElement('p');
+                msg.textContent = 'No extensions installed';
+                emptyDiv.appendChild(msg);
+
+                var pathInfo = document.createElement('p');
+                pathInfo.textContent = 'Place extension folders in:';
+                emptyDiv.appendChild(pathInfo);
+
+                var codePath = document.createElement('code');
+                codePath.textContent = '~/.config/servo-private/extensions/';
+                emptyDiv.appendChild(codePath);
+
+                var hint = document.createElement('p');
+                hint.style.fontSize = '13px';
+                hint.style.marginTop = '16px';
+                hint.textContent = 'Each extension needs a manifest.json file (Chrome Manifest V3 subset supported)';
+                emptyDiv.appendChild(hint);
+
+                list.appendChild(emptyDiv);
+                return;
+            }
+
+            extensions.forEach(function(ext) {
+                var card = document.createElement('div');
+                card.className = 'ext-card';
+
+                var info = document.createElement('div');
+                info.className = 'ext-info';
+
+                var nameEl = document.createElement('h3');
+                nameEl.textContent = ext.name;
+                info.appendChild(nameEl);
+
+                var versionEl = document.createElement('span');
+                versionEl.className = 'version';
+                versionEl.textContent = 'v' + ext.version + ' \u00B7 ' + ext.id;
+                info.appendChild(versionEl);
+
+                if (ext.description) {
+                    var descEl = document.createElement('div');
+                    descEl.className = 'description';
+                    descEl.textContent = ext.description;
+                    info.appendChild(descEl);
+                }
+
+                card.appendChild(info);
+
+                var actions = document.createElement('div');
+                actions.className = 'ext-actions';
+
+                var toggleLabel = document.createElement('label');
+                toggleLabel.className = 'toggle-switch';
+
+                var checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = ext.enabled;
+                toggleLabel.appendChild(checkbox);
+
+                var slider = document.createElement('span');
+                slider.className = 'toggle-slider';
+                toggleLabel.appendChild(slider);
+
+                actions.appendChild(toggleLabel);
+                card.appendChild(actions);
+                list.appendChild(card);
+            });
+        }
+
+        loadExtensions();
+    </script>
+</body>
+</html>

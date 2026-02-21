@@ -506,6 +506,26 @@ impl HeadedWindow {
                     },
                 );
             })
+            // Ctrl+D — toggle bookmark for current page
+            .shortcut(CMD_OR_CONTROL, 'D', || {
+                self.gui.borrow_mut().toggle_bookmark(window);
+                self.winit_window.request_redraw();
+            })
+            // Ctrl+Shift+B — toggle bookmarks panel
+            .shortcut(CMD_OR_CONTROL | Modifiers::SHIFT, 'B', || {
+                self.gui.borrow_mut().toggle_bookmarks_panel();
+                self.winit_window.request_redraw();
+            })
+            // Ctrl+H — toggle history panel
+            .shortcut(CMD_OR_CONTROL, 'H', || {
+                self.gui.borrow_mut().toggle_history_panel();
+                self.winit_window.request_redraw();
+            })
+            // Ctrl+J — toggle downloads panel
+            .shortcut(CMD_OR_CONTROL, 'J', || {
+                self.gui.borrow_mut().toggle_downloads_panel();
+                self.winit_window.request_redraw();
+            })
             .otherwise(|| handled = false);
         handled
     }
@@ -628,7 +648,7 @@ impl HeadedWindow {
             };
 
             self.last_mouse_position.set(Some(point));
-            self.gui.borrow().is_in_egui_toolbar_rect(point)
+            self.gui.borrow().is_in_egui_ui_rect(point)
         };
 
         // Handle the event

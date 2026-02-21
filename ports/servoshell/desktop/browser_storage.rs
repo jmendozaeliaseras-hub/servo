@@ -5,6 +5,7 @@
 //! Persistent browser storage backed by SQLite.
 //! Stores bookmarks, browsing history, and browser settings.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
@@ -62,10 +63,23 @@ const SCHEMA_SQL: &str = "
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS extensions (
+        id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS extension_storage (
+        extension_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        PRIMARY KEY(extension_id, key)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_history_last_visited ON history(last_visited DESC);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_folder ON bookmarks(folder_id);
     CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_folders_parent ON bookmark_folders(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_ext_storage ON extension_storage(extension_id);
 ";
 
 fn database_path() -> PathBuf {
@@ -747,6 +761,107 @@ pub fn clear_all_site_settings() {
     let db = DB.lock().expect("Database lock poisoned");
     if let Err(e) = clear_all_site_settings_with_conn(&db) {
         error!("Failed to clear site settings: {}", e);
+    }
+}
+
+// ── Extension storage ──────────────────────────────────────────────────────
+
+/// Check if an extension is enabled (defaults to true if not in DB).
+pub fn is_extension_enabled(id: &str) -> bool {
+    let db = DB.lock().expect("Database lock poisoned");
+    db.query_row(
+        "SELECT enabled FROM extensions WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, i32>(0),
+    )
+    .map(|v| v != 0)
+    .unwrap_or(true) // default enabled if not in DB
+}
+
+/// Set extension enabled/disabled state.
+pub fn set_extension_enabled(id: &str, enabled: bool) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = db.execute(
+        "INSERT INTO extensions (id, enabled) VALUES (?1, ?2) \
+         ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled",
+        params![id, enabled as i32],
+    ) {
+        error!("Failed to set extension enabled state: {}", e);
+    }
+}
+
+/// Remove all data for an extension (state + storage).
+pub fn remove_extension_data(id: &str) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = db.execute("DELETE FROM extensions WHERE id = ?1", params![id]) {
+        error!("Failed to remove extension record: {}", e);
+    }
+    if let Err(e) = db.execute(
+        "DELETE FROM extension_storage WHERE extension_id = ?1",
+        params![id],
+    ) {
+        error!("Failed to remove extension storage: {}", e);
+    }
+}
+
+/// Get a value from extension local storage.
+pub fn extension_storage_get(extension_id: &str, key: &str) -> Option<String> {
+    let db = DB.lock().expect("Database lock poisoned");
+    db.query_row(
+        "SELECT value FROM extension_storage WHERE extension_id = ?1 AND key = ?2",
+        params![extension_id, key],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+/// Get multiple values from extension local storage.
+pub fn extension_storage_get_keys(extension_id: &str, keys: &[String]) -> HashMap<String, String> {
+    let db = DB.lock().expect("Database lock poisoned");
+    let mut result = HashMap::new();
+    for key in keys {
+        if let Ok(value) = db.query_row(
+            "SELECT value FROM extension_storage WHERE extension_id = ?1 AND key = ?2",
+            params![extension_id, key],
+            |row| row.get::<_, String>(0),
+        ) {
+            result.insert(key.clone(), value);
+        }
+    }
+    result
+}
+
+/// Set a value in extension local storage.
+pub fn extension_storage_set(extension_id: &str, key: &str, value: &str) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = db.execute(
+        "INSERT INTO extension_storage (extension_id, key, value) VALUES (?1, ?2, ?3) \
+         ON CONFLICT(extension_id, key) DO UPDATE SET value = excluded.value",
+        params![extension_id, key, value],
+    ) {
+        error!("Failed to set extension storage: {}", e);
+    }
+}
+
+/// Remove a key from extension local storage.
+pub fn extension_storage_remove(extension_id: &str, key: &str) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = db.execute(
+        "DELETE FROM extension_storage WHERE extension_id = ?1 AND key = ?2",
+        params![extension_id, key],
+    ) {
+        error!("Failed to remove extension storage key: {}", e);
+    }
+}
+
+/// Clear all storage for an extension.
+pub fn extension_storage_clear(extension_id: &str) {
+    let db = DB.lock().expect("Database lock poisoned");
+    if let Err(e) = db.execute(
+        "DELETE FROM extension_storage WHERE extension_id = ?1",
+        params![extension_id],
+    ) {
+        error!("Failed to clear extension storage: {}", e);
     }
 }
 

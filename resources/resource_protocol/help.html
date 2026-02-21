@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Help — Private Browser</title>
+  <style>
+    /* ═══════════════════════════════════════════
+       DESIGN TOKENS
+       ═══════════════════════════════════════════ */
+    :root {
+      --bg: #f4f3f1;
+      --bg-card: #fff;
+      --bg-toc: #eae8e4;
+      --bg-callout: #e8edf5;
+      --text: #1a1a1a;
+      --text-secondary: #555;
+      --text-muted: #888;
+      --accent: #3d3b8e;
+      --accent-light: #5c5ab5;
+      --accent-faint: rgba(61, 59, 142, 0.08);
+      --border: #ddd;
+      --border-card: #e0deda;
+      --border-accent: #3d3b8e;
+      --kbd-bg: #f0eeeb;
+      --kbd-border: #c8c5c0;
+      --kbd-shadow: #b0ada8;
+      --summary-marker: #3d3b8e;
+      --icon-bg: #eae8e4;
+      --table-stripe: #faf9f7;
+      --callout-border: #c0cbdf;
+      --link: #3d3b8e;
+      --provider-bg: #f7f6f4;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1b22;
+        --bg-card: #26252d;
+        --bg-toc: #222128;
+        --bg-callout: #1e2433;
+        --text: #e2e0dc;
+        --text-secondary: #aaa;
+        --text-muted: #777;
+        --accent: #8b88d4;
+        --accent-light: #a5a2e0;
+        --accent-faint: rgba(139, 136, 212, 0.1);
+        --border: #3a3940;
+        --border-card: #3a3940;
+        --border-accent: #8b88d4;
+        --kbd-bg: #2e2d36;
+        --kbd-border: #4a4952;
+        --kbd-shadow: #18171e;
+        --summary-marker: #8b88d4;
+        --icon-bg: #2e2d36;
+        --table-stripe: #2a2930;
+        --callout-border: #3a4560;
+        --link: #a5a2e0;
+        --provider-bg: #2a2930;
+      }
+    }
+
+    /* ═══════════════════════════════════════════
+       RESET & BASE
+       ═══════════════════════════════════════════ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 2rem 1.5rem 4rem;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    a {
+      color: var(--link);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+
+    /* ═══════════════════════════════════════════
+       HEADER / MASTHEAD
+       ═══════════════════════════════════════════ */
+    .masthead {
+      text-align: center;
+      padding: 1.5rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2rem;
+    }
+
+    .masthead-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.5px;
+    }
+
+    .masthead h1 {
+      font-size: 1.7rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin-bottom: 0.25rem;
+    }
+
+    .masthead .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       TABLE OF CONTENTS
+       ═══════════════════════════════════════════ */
+    .toc {
+      background: var(--bg-toc);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .toc-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.35rem 1.5rem;
+    }
+
+    .toc-grid a {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.3rem 0;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .toc-grid a:hover { color: var(--accent); text-decoration: none; }
+
+    .toc-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      background: var(--accent-faint);
+      color: var(--accent);
+      font-size: 0.7rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ═══════════════════════════════════════════
+       SECTIONS (collapsible <details>)
+       ═══════════════════════════════════════════ */
+    details {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-left: 3px solid var(--border-accent);
+      border-radius: 0 10px 10px 0;
+      margin-bottom: 1rem;
+      transition: box-shadow 0.2s;
+    }
+    details:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+    @media (prefers-color-scheme: dark) {
+      details:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.25); }
+    }
+
+    details[open] {
+      box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      details[open] { box-shadow: 0 2px 16px rgba(0,0,0,0.3); }
+    }
+
+    summary {
+      padding: 1rem 1.25rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      user-select: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+
+    summary::before {
+      content: "\25B8";
+      color: var(--summary-marker);
+      font-size: 0.85rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .section-body {
+      padding: 0 1.25rem 1.25rem;
+      font-size: 0.93rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .section-body p { margin-bottom: 0.75rem; }
+    .section-body p:last-child { margin-bottom: 0; }
+
+    .section-body h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 1.25rem 0 0.5rem;
+    }
+    .section-body h3:first-child { margin-top: 0.25rem; }
+
+    .section-body h4 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 1rem 0 0.35rem;
+    }
+
+    .section-body ul, .section-body ol {
+      padding-left: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+    .section-body li { margin-bottom: 0.3rem; }
+
+    /* ═══════════════════════════════════════════
+       TOOLBAR ICON GRID
+       ═══════════════════════════════════════════ */
+    .icon-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .icon-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .icon-item:last-child { border-bottom: none; }
+
+    .icon-symbol {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: var(--icon-bg);
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      color: var(--text);
+    }
+
+    .icon-desc strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════
+       SETTING ENTRIES
+       ═══════════════════════════════════════════ */
+    .setting {
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .setting:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+
+    .setting-name {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       CALLOUT BOXES
+       ═══════════════════════════════════════════ */
+    .callout {
+      background: var(--bg-callout);
+      border: 1px solid var(--callout-border);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      margin: 0.75rem 0;
+      font-size: 0.88rem;
+    }
+
+    .callout-label {
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 0.25rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       PROVIDER CARDS (DoH)
+       ═══════════════════════════════════════════ */
+    .provider {
+      background: var(--provider-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 0.6rem;
+    }
+    .provider:last-child { margin-bottom: 0; }
+
+    .provider-name {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.93rem;
+    }
+
+    .provider-ip {
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      margin-left: 0.35rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       WEBRTC MODE TABLE
+       ═══════════════════════════════════════════ */
+    .mode-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5rem 0 0.75rem;
+      font-size: 0.88rem;
+    }
+
+    .mode-table th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--text);
+      padding: 0.5rem 0.65rem;
+      border-bottom: 2px solid var(--border-accent);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-table td {
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .mode-table tr:nth-child(even) td {
+      background: var(--table-stripe);
+    }
+
+    .mode-table .mode-name {
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .mode-default {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-left: 0.35rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       KEYBOARD SHORTCUTS TABLE
+       ═══════════════════════════════════════════ */
+    .shortcuts-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+    }
+
+    .shortcuts-table th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--text);
+      padding: 0.5rem 0.5rem;
+      border-bottom: 2px solid var(--border-accent);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .shortcuts-table td {
+      padding: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .shortcuts-table tr:nth-child(even) td {
+      background: var(--table-stripe);
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text);
+      background: var(--kbd-bg);
+      border: 1px solid var(--kbd-border);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .key-combo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+    }
+
+    .key-plus {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 0 0.1rem;
+    }
+
+    .key-or {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      padding: 0 0.25rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       INTERNAL PAGES LIST
+       ═══════════════════════════════════════════ */
+    .pages-list {
+      list-style: none;
+      padding: 0;
+      margin: 0.5rem 0;
+    }
+
+    .pages-list li {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .pages-list li:last-child { border-bottom: none; }
+
+    .page-url {
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--accent);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .page-desc {
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+
+    /* ═══════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════ */
+    .footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* ═══════════════════════════════════════════
+       CODE / MONO
+       ═══════════════════════════════════════════ */
+    code {
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.85em;
+      background: var(--kbd-bg);
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- ═══════════ MASTHEAD ═══════════ -->
+    <div class="masthead">
+      <div class="masthead-icon">PB</div>
+      <h1>Private Browser Help</h1>
+      <p class="subtitle">Everything you need to know about your privacy-first browser</p>
+    </div>
+
+    <!-- ═══════════ TABLE OF CONTENTS ═══════════ -->
+    <nav class="toc">
+      <div class="toc-title">Contents</div>
+      <div class="toc-grid">
+        <a href="#overview"><span class="toc-num">1</span> Browser Overview</a>
+        <a href="#toolbar"><span class="toc-num">2</span> Toolbar Guide</a>
+        <a href="#privacy"><span class="toc-num">3</span> Privacy Settings</a>
+        <a href="#per-site"><span class="toc-num">4</span> Per-Site Settings</a>
+        <a href="#experimental"><span class="toc-num">5</span> Experimental Prefs</a>
+        <a href="#extensions"><span class="toc-num">6</span> Extensions</a>
+        <a href="#pages"><span class="toc-num">7</span> Internal Pages</a>
+        <a href="#shortcuts"><span class="toc-num">8</span> Keyboard Shortcuts</a>
+        <a href="#limitations"><span class="toc-num">9</span> Known Limitations</a>
+      </div>
+    </nav>
+
+    <!-- ═══════════ 1. BROWSER OVERVIEW ═══════════ -->
+    <details id="overview" open>
+      <summary>Browser Overview</summary>
+      <div class="section-body">
+        <p>Private Browser is a privacy-first web browser built on the <strong>Servo</strong> engine — an independent, open-source browser engine written in Rust. Unlike browsers built on Chromium or Gecko, Servo is designed from the ground up for performance and safety, leveraging Rust's memory safety guarantees to eliminate entire classes of security vulnerabilities.</p>
+
+        <h3>Why Privacy Matters</h3>
+        <p>Every time you browse the web, dozens of companies try to track your activity: advertisers build profiles of your interests, data brokers collect your browsing history, and even your internet provider can see which sites you visit. Private Browser ships with privacy protections <strong>enabled by default</strong> — you don't need to install add-ons or change hidden settings to be protected.</p>
+
+        <h3>What Makes This Different</h3>
+        <ul>
+          <li><strong>Rust-powered engine</strong> — memory-safe by design, reducing the risk of buffer overflows and use-after-free vulnerabilities that plague C/C++ browsers</li>
+          <li><strong>Built-in content blocking</strong> — ads and trackers are blocked without needing third-party extensions</li>
+          <li><strong>Fingerprint protection</strong> — makes it harder for websites to uniquely identify your browser</li>
+          <li><strong>Encrypted DNS</strong> — DNS-over-HTTPS prevents your ISP from seeing which sites you visit</li>
+          <li><strong>No telemetry</strong> — your browsing data stays on your device, period</li>
+        </ul>
+
+        <p>This browser is open-source software licensed under the Mozilla Public License 2.0.</p>
+      </div>
+    </details>
+
+    <!-- ═══════════ 2. TOOLBAR GUIDE ═══════════ -->
+    <details id="toolbar">
+      <summary>Toolbar Guide</summary>
+      <div class="section-body">
+        <p>The toolbar contains navigation controls on the left and feature buttons on the right. Here's what each button does:</p>
+
+        <ul class="icon-list">
+          <li class="icon-item">
+            <span class="icon-symbol">⏱</span>
+            <div class="icon-desc"><strong>History</strong> — Opens the history panel showing your recently visited pages. Your history is stored locally and never sent anywhere. <kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>H</kbd></div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">⊕</span>
+            <div class="icon-desc"><strong>Extensions</strong> — Opens the extension manager where you can view, enable, and disable installed browser extensions.</div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">★</span>
+            <div class="icon-desc"><strong>Bookmarks</strong> — Opens the bookmarks panel. Add the current page with <kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>D</kbd>, or browse your saved bookmarks here. <kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Shift</kbd><span class="key-plus">+</span><kbd>B</kbd></div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">⬇</span>
+            <div class="icon-desc"><strong>Downloads</strong> — Shows your recent downloads with file names, sizes, and status. <kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">⊟</span>
+            <div class="icon-desc"><strong>Reader Mode</strong> — Strips the current page down to its main content, removing ads, sidebars, and navigation. Useful for reading articles without distractions.</div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">◈</span>
+            <div class="icon-desc"><strong>Site Privacy Settings</strong> — Shows privacy controls for the current website. Override global settings on a per-site basis — for example, allow cookies on a trusted site while blocking them everywhere else.</div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">⚙</span>
+            <div class="icon-desc"><strong>Settings</strong> — Opens the settings panel with appearance options (theme, favorites bar) and global privacy controls (content blocking, fingerprint protection, DNS-over-HTTPS, and more).</div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">?</span>
+            <div class="icon-desc"><strong>Help</strong> — Opens this help page.</div>
+          </li>
+          <li class="icon-item">
+            <span class="icon-symbol">☢</span>
+            <div class="icon-desc"><strong>Experimental Preferences</strong> — A master switch that enables or disables all 13 experimental web platform features at once. When toggled on, all pages reload automatically to apply the changes. See the <a href="#experimental">Experimental Preferences</a> section below for the full list and how to control them individually.</div>
+          </li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- ═══════════ 3. PRIVACY SETTINGS ═══════════ -->
+    <details id="privacy">
+      <summary>Privacy Settings Reference</summary>
+      <div class="section-body">
+        <p>Open the settings panel by clicking <strong>⚙</strong> in the toolbar. The Privacy section contains these controls:</p>
+
+        <!-- Block ads & trackers -->
+        <div class="setting">
+          <div class="setting-name">Block ads &amp; trackers</div>
+          <p>Enables the built-in content blocker, which prevents known advertising and tracking domains from loading. This works similarly to browser extensions like uBlock Origin, using filter lists that identify tracking scripts, advertising networks, and analytics services.</p>
+          <p>When enabled, pages load faster (less content to download), use less bandwidth, and reveal less information about your browsing habits. Some websites may not work correctly with content blocking — if a site breaks, you can disable it for that specific site using the <strong>◈</strong> shield icon.</p>
+        </div>
+
+        <!-- Fingerprint protection -->
+        <div class="setting">
+          <div class="setting-name">Fingerprint protection</div>
+          <p><strong>Browser fingerprinting</strong> is a technique websites use to identify you without cookies. By collecting information about your browser — screen resolution, installed fonts, hardware capabilities, timezone, language — they can create a unique "fingerprint" that tracks you across sites.</p>
+          <p>When enabled, this setting reduces the amount of identifying information your browser reveals: it may standardize certain values, add small amounts of noise to canvas and WebGL readouts, and limit access to APIs commonly used for fingerprinting.</p>
+          <div class="callout">
+            <div class="callout-label">Note</div>
+            Fingerprint protection may cause minor visual differences on some sites. If a site's layout looks wrong, try disabling this for that site via the ◈ shield icon.
+          </div>
+        </div>
+
+        <!-- HTTPS upgrade -->
+        <div class="setting">
+          <div class="setting-name">Auto-upgrade to HTTPS</div>
+          <p>When you visit a website using <code>http://</code>, your connection is unencrypted — anyone on the same network (a coffee shop, hotel, airport) can see exactly what you're reading and doing. HTTPS encrypts that connection.</p>
+          <p>This setting automatically tries the <code>https://</code> version of every site first. Most modern websites support HTTPS, so this upgrade is seamless. If the HTTPS version doesn't exist, the browser falls back to HTTP.</p>
+        </div>
+
+        <!-- DNT -->
+        <div class="setting">
+          <div class="setting-name">Send Do-Not-Track header</div>
+          <p>Adds a <code>DNT: 1</code> header to every web request, signaling to websites that you do not want to be tracked. This is a voluntary standard — websites are not legally required to honor it, and most advertising networks ignore it entirely.</p>
+          <div class="callout">
+            <div class="callout-label">Limitation</div>
+            DNT is largely ineffective on its own. Most major ad networks do not respect it. However, some privacy-conscious websites and services do honor the signal. It doesn't hurt to enable it, but don't rely on it as your only protection.
+          </div>
+        </div>
+
+        <!-- GPC -->
+        <div class="setting">
+          <div class="setting-name">Send Global Privacy Control</div>
+          <p>GPC is the successor to Do-Not-Track, with a crucial difference: <strong>it has legal teeth</strong>. Under the California Consumer Privacy Act (CCPA) and similar laws, businesses are legally required to treat a GPC signal as a valid opt-out of the sale or sharing of personal information.</p>
+          <p>When enabled, your browser sends a <code>Sec-GPC: 1</code> header with every request. Unlike DNT, companies covered by privacy laws must honor this signal or face enforcement action.</p>
+        </div>
+
+        <!-- Cookie auto-shred -->
+        <div class="setting">
+          <div class="setting-name">Delete cookies on tab close</div>
+          <p>Cookies are small files websites store in your browser. <strong>Session cookies</strong> are temporary and disappear when you close the tab. <strong>Persistent cookies</strong> remain for days, weeks, or even years — this is how sites "remember" your login or preferences, but also how advertisers track you across sessions.</p>
+          <p>When this setting is enabled, all cookies for a site are deleted when you close the tab that was visiting it. This gives you a fresh start every time — no lingering tracking cookies. The trade-off: you'll need to log in again each time you revisit a site.</p>
+        </div>
+
+        <!-- Cookie policy -->
+        <div class="setting">
+          <div class="setting-name">Cookie policy</div>
+          <p>Displayed as a read-only status. Controls which cookies the browser accepts:</p>
+          <ul>
+            <li><strong>Restrictive</strong> — blocks third-party cookies (cookies set by domains other than the one you're visiting). This prevents cross-site tracking while allowing sites to function normally with their own cookies.</li>
+            <li><strong>Permissive</strong> — allows all cookies, including third-party. Use this only if restrictive mode breaks a site you need.</li>
+          </ul>
+        </div>
+
+        <!-- Referrer policy -->
+        <div class="setting">
+          <div class="setting-name">Referrer policy</div>
+          <p>When you click a link, your browser normally tells the destination site where you came from via the <code>Referer</code> header. This leaks your browsing path — the destination learns exactly which page you were reading.</p>
+          <p>A strict referrer policy limits this information. For example, it might send only the domain name (not the full path), or nothing at all when navigating from HTTPS to HTTP.</p>
+        </div>
+
+        <!-- WebRTC -->
+        <h3>WebRTC Settings</h3>
+        <p>WebRTC (Web Real-Time Communication) enables video calls, voice chat, and peer-to-peer file sharing directly in the browser. However, it can also <strong>leak your real IP address</strong> — even if you're using a VPN — by enumerating your network interfaces.</p>
+
+        <table class="mode-table">
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Behavior</th>
+              <th>Privacy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="mode-name">Block local IPs</span><span class="mode-default">Default</span></td>
+              <td>Prevents WebRTC from revealing your local/internal IP addresses. Video calls and voice chat still work using your public IP.</td>
+              <td>Good — stops local IP leaks while keeping WebRTC functional.</td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">Disable WebRTC</span></td>
+              <td>Completely disables WebRTC. No IP leak is possible, but video calls (Google Meet, Jitsi, etc.) and voice chat will not work.</td>
+              <td>Maximum — no IP leak possible. Use this if you never use browser-based calls.</td>
+            </tr>
+            <tr>
+              <td><span class="mode-name">Allow all</span></td>
+              <td>Standard browser behavior. WebRTC can see all network interfaces, including local IPs. Full compatibility with all video/voice services.</td>
+              <td>Low — your local and public IPs may be exposed to any website using WebRTC.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- DNS-over-HTTPS -->
+        <h3>DNS-over-HTTPS (DoH)</h3>
+        <p><strong>DNS</strong> is the system that translates domain names (like <code>example.com</code>) into IP addresses. By default, DNS queries are sent in plain text — your ISP, network administrator, or anyone on the same Wi-Fi can see every domain you look up.</p>
+        <p><strong>DNS-over-HTTPS</strong> encrypts these queries, sending them through HTTPS to a trusted resolver. This prevents eavesdropping on your DNS lookups.</p>
+        <p>When you enable DoH, choose a provider:</p>
+
+        <div class="provider">
+          <div class="provider-name">Cloudflare <span class="provider-ip">1.1.1.1</span></div>
+          <p>Generally the fastest resolver. Cloudflare commits to not logging your IP address and purging all query logs within 24 hours. Independently audited annually. Privacy policy prohibits selling data or using it for advertising.</p>
+        </div>
+
+        <div class="provider">
+          <div class="provider-name">Google <span class="provider-ip">8.8.8.8</span></div>
+          <p>Highly reliable with global infrastructure. Google does collect some metadata (city-level location, ISP, temporary IP data) for debugging and security purposes. Logs are anonymized within 24-48 hours. A reasonable choice if speed and reliability matter more than minimal data collection.</p>
+        </div>
+
+        <div class="provider">
+          <div class="provider-name">Quad9 <span class="provider-ip">9.9.9.9</span></div>
+          <p>Operated by a Swiss nonprofit foundation. Quad9 blocks known malicious domains automatically, adding a layer of security on top of privacy. Subject to Swiss privacy law, which is among the strongest in the world. No user data is logged or shared.</p>
+        </div>
+
+        <div class="callout">
+          <div class="callout-label">Tip</div>
+          To verify DoH is working, visit a DNS leak test website after enabling it. Your DNS queries should show the resolver you selected (e.g., Cloudflare) rather than your ISP's DNS servers.
+        </div>
+      </div>
+    </details>
+
+    <!-- ═══════════ 4. PER-SITE SETTINGS ═══════════ -->
+    <details id="per-site">
+      <summary>Per-Site Settings</summary>
+      <div class="section-body">
+        <p>The <strong>◈</strong> shield icon in the toolbar lets you adjust privacy settings for the website you're currently viewing. This is useful when a site doesn't work with your global privacy settings — you can relax protections for that specific site without changing your defaults everywhere.</p>
+
+        <h3>Available Per-Site Controls</h3>
+        <ul>
+          <li><strong>Content blocking</strong> — enable or disable ad/tracker blocking for this site</li>
+          <li><strong>Fingerprint protection</strong> — enable or disable fingerprint resistance for this site</li>
+          <li><strong>Allow all cookies</strong> — override your global cookie policy to allow all cookies on this site</li>
+        </ul>
+
+        <h3>How Overrides Work</h3>
+        <p>Per-site settings are stored by hostname (e.g., <code>example.com</code>). When you visit that site again, your per-site overrides are automatically applied. These settings take priority over your global settings — so if you have content blocking enabled globally but disabled for <code>example.com</code>, ads will load on that site but remain blocked everywhere else.</p>
+        <p>Per-site settings persist across browser restarts. To remove a per-site override, open the shield popup on that site and toggle the setting back to match your global preference.</p>
+      </div>
+    </details>
+
+    <!-- ═══════════ 5. EXPERIMENTAL PREFERENCES ═══════════ -->
+    <details id="experimental">
+      <summary>Experimental Preferences</summary>
+      <div class="section-body">
+        <p>Servo is an actively developing browser engine. Some web platform features are implemented but not yet stable enough to enable by default. These are gated behind <strong>experimental preferences</strong> — flags you can turn on to try new capabilities.</p>
+
+        <h3>The ☢ Toolbar Button (All-or-Nothing)</h3>
+        <p>The <strong>☢</strong> button in the toolbar is a <strong>master switch</strong>. Clicking it toggles all 13 experimental features on or off at once. When you toggle it, every open page automatically reloads to apply the changes. This is the quickest way to enable everything if you want maximum site compatibility.</p>
+
+        <h3>The 13 Experimental Features</h3>
+        <p>Here's exactly what gets enabled when you flip that switch:</p>
+
+        <h4>DOM &amp; JavaScript APIs</h4>
+        <div class="setting">
+          <div class="setting-name">Async Clipboard API</div>
+          <p><code>dom_async_clipboard_enabled</code> — Allows websites to read from and write to the system clipboard using <code>navigator.clipboard.readText()</code> and <code>navigator.clipboard.writeText()</code>. Needed by sites with "copy to clipboard" buttons.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">FontFace API</div>
+          <p><code>dom_fontface_enabled</code> — Enables the CSS Font Loading API (<code>FontFace</code> constructor and <code>document.fonts</code>). Allows scripts to dynamically load and manage web fonts. Used by sites that load fonts on demand.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Intersection Observer</div>
+          <p><code>dom_intersection_observer_enabled</code> — Detects when elements scroll into or out of the viewport. Widely used for lazy-loading images, infinite scroll, and triggering animations on scroll. Many modern websites depend on this.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Protocol Handlers</div>
+          <p><code>dom_navigator_protocol_handlers_enabled</code> — Allows websites to register themselves as handlers for custom URL schemes (e.g., a mail app registering for <code>mailto:</code> links).</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Notifications API</div>
+          <p><code>dom_notification_enabled</code> — Allows websites to display system notifications (with your permission). Used by chat apps, email clients, and news sites for alerts.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">OffscreenCanvas</div>
+          <p><code>dom_offscreen_canvas_enabled</code> — Allows rendering canvas graphics in a Web Worker (background thread), keeping the main page responsive. Used by games, data visualization tools, and image processing apps.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Permissions API</div>
+          <p><code>dom_permissions_enabled</code> — Provides a standardized way for websites to query the status of permissions (like notification, geolocation, or camera access) without triggering a permission prompt.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">WebGL 2.0</div>
+          <p><code>dom_webgl2_enabled</code> — The second generation of WebGL, providing access to OpenGL ES 3.0 features. Required by some 3D games, advanced data visualizations, and creative coding tools (e.g., Shadertoy, three.js scenes).</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">WebGPU</div>
+          <p><code>dom_webgpu_enabled</code> — A next-generation graphics API that provides direct access to modern GPU capabilities. Significantly faster than WebGL for complex rendering. Still emerging — used by cutting-edge web apps and GPU compute workloads.</p>
+        </div>
+
+        <h4>CSS Layout Features</h4>
+        <div class="setting">
+          <div class="setting-name">CSS Multi-Column Layout</div>
+          <p><code>layout_columns_enabled</code> — Enables the <code>column-count</code>, <code>column-width</code>, and related CSS properties that flow content into newspaper-style columns.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">CSS Container Queries</div>
+          <p><code>layout_container_queries_enabled</code> — Allows CSS styles to respond to the size of a parent container (not just the viewport). A major advancement over media queries — lets components be truly responsive regardless of where they're placed on a page.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">CSS Grid Layout</div>
+          <p><code>layout_grid_enabled</code> — Enables CSS Grid (<code>display: grid</code>), a two-dimensional layout system. Extremely widely used — many modern websites rely on CSS Grid for their page structure. Enabling this significantly improves compatibility.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Variable Fonts</div>
+          <p><code>layout_variable_fonts_enabled</code> — Supports OpenType variable fonts that contain multiple styles (weights, widths, slants) in a single font file. Allows smooth transitions between font weights and more efficient font loading.</p>
+        </div>
+
+        <h3>How to Configure Individual Preferences</h3>
+        <p>The ☢ button is all-or-nothing. But you can turn individual features on or off independently using two other pages:</p>
+
+        <h4>Option 1: servo:preferences (Simple)</h4>
+        <p>Navigate to <code>servo:preferences</code> in the address bar. This page has checkboxes for:</p>
+        <ul>
+          <li><strong>Experimental web platform features</strong> — same as the ☢ button (toggles all 13)</li>
+          <li><strong>Even more experimental web platform features</strong> — enables <code>dom_abort_controller_enabled</code> and <code>dom_indexeddb_enabled</code> (separate from the 13 above)</li>
+          <li><strong>Disable HTTP cache</strong> — useful for development/debugging</li>
+          <li><strong>User agent</strong> — switch between Servo, Firefox, or Chrome user agent strings (helps with sites that block unknown browsers)</li>
+        </ul>
+
+        <h4>Option 2: servo:config (Advanced — Individual Control)</h4>
+        <p>Navigate to <code>servo:config</code> in the address bar. This is the <strong>power-user page</strong> — it lists every single preference in the browser (hundreds of them), and you can search, browse, and toggle each one individually.</p>
+        <p>To enable just one experimental feature (e.g., CSS Grid without enabling everything else):</p>
+        <ol>
+          <li>Go to <code>servo:config</code></li>
+          <li>Type <code>layout_grid</code> in the search box</li>
+          <li>Find <code>layout_grid_enabled</code> — it will show <code>false</code></li>
+          <li>Click the toggle button (⇄) next to it to flip it to <code>true</code></li>
+        </ol>
+        <p>Changes take effect immediately. You may need to reload the page you're testing.</p>
+
+        <div class="callout">
+          <div class="callout-label">Recommendation</div>
+          For the best site compatibility, consider enabling at least <strong>CSS Grid</strong> (<code>layout_grid_enabled</code>) and <strong>Intersection Observer</strong> (<code>dom_intersection_observer_enabled</code>) — these two are used by a huge number of modern websites. You can do this individually via <code>servo:config</code> without turning on everything else.
+        </div>
+      </div>
+    </details>
+
+
+    <details id="extensions">
+      <summary>Extensions</summary>
+      <div class="section-body">
+        <p>Private Browser supports a subset of the WebExtension API, allowing you to install lightweight browser extensions.</p>
+
+        <h3>Installing Extensions</h3>
+        <ol>
+          <li>Find or create an extension with a <code>manifest.json</code> file (Manifest V2 or V3 format)</li>
+          <li>Create a folder for the extension inside your extensions directory:
+            <br><code>servo-private/extensions/your-extension-name/</code>
+            <br>(Located in your system's app configuration directory)</li>
+          <li>Place the extension files (manifest.json, scripts, etc.) in that folder</li>
+          <li>Restart the browser or click <strong>⊕</strong> to see your extension</li>
+        </ol>
+
+        <h3>Managing Extensions</h3>
+        <p>Click the <strong>⊕</strong> button in the toolbar or navigate to <code>servo:extensions</code> to view all installed extensions. From there, you can enable or disable individual extensions.</p>
+
+        <h3>Supported APIs</h3>
+        <p>Currently supported: basic storage API (<code>browser.storage.local</code>) for extensions to save and retrieve data. More APIs may be added in future releases.</p>
+
+        <div class="callout">
+          <div class="callout-label">Note</div>
+          Extension support is still evolving. Complex extensions designed for Chrome or Firefox may not work. Simple extensions (content scripts, basic storage) are most likely to be compatible.
+        </div>
+      </div>
+    </details>
+
+    <!-- ═══════════ 6. INTERNAL PAGES ═══════════ -->
+    <details id="pages">
+      <summary>Internal Pages</summary>
+      <div class="section-body">
+        <p>Type these addresses into the URL bar to access built-in browser pages:</p>
+
+        <ul class="pages-list">
+          <li>
+            <span class="page-url">servo:newtab</span>
+            <span class="page-desc">New tab page — your starting point for browsing</span>
+          </li>
+          <li>
+            <span class="page-url">servo:config</span>
+            <span class="page-desc">Configuration — view and modify browser preferences</span>
+          </li>
+          <li>
+            <span class="page-url">servo:preferences</span>
+            <span class="page-desc">Advanced preferences — fine-grained browser settings</span>
+          </li>
+          <li>
+            <span class="page-url">servo:extensions</span>
+            <span class="page-desc">Extension manager — view and manage installed extensions</span>
+          </li>
+          <li>
+            <span class="page-url">servo:help</span>
+            <span class="page-desc">Help — this page</span>
+          </li>
+          <li>
+            <span class="page-url">servo:license</span>
+            <span class="page-desc">Licenses — open source license information</span>
+          </li>
+          <li>
+            <span class="page-url">servo:vpn-guide</span>
+            <span class="page-desc">VPN guide — recommended VPN providers for enhanced privacy</span>
+          </li>
+          <li>
+            <span class="page-url">servo:test-battery</span>
+            <span class="page-desc">Privacy tests — run tests to verify your privacy protections</span>
+          </li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- ═══════════ 7. KEYBOARD SHORTCUTS ═══════════ -->
+    <details id="shortcuts">
+      <summary>Keyboard Shortcuts</summary>
+      <div class="section-body">
+        <table class="shortcuts-table">
+          <thead>
+            <tr>
+              <th>Shortcut</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>L</kbd></span>
+                <span class="key-or">or</span>
+                <span class="key-combo"><kbd>Alt</kbd><span class="key-plus">+</span><kbd>D</kbd></span>
+              </td>
+              <td>Focus the address bar</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>D</kbd></span></td>
+              <td>Add or remove bookmark for current page</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>H</kbd></span></td>
+              <td>Toggle history panel</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>Shift</kbd><span class="key-plus">+</span><kbd>B</kbd></span></td>
+              <td>Toggle bookmarks panel</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>J</kbd></span></td>
+              <td>Toggle downloads panel</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>F</kbd></span></td>
+              <td>Find in page</td>
+            </tr>
+            <tr>
+              <td><span class="key-combo"><kbd>Ctrl</kbd><span class="key-plus">+</span><kbd>S</kbd></span></td>
+              <td>Save page</td>
+            </tr>
+            <tr>
+              <td><kbd>Escape</kbd></td>
+              <td>Close find bar</td>
+            </tr>
+            <tr>
+              <td><kbd>F11</kbd></td>
+              <td>Toggle fullscreen</td>
+            </tr>
+            <tr>
+              <td><kbd>Enter</kbd></td>
+              <td>Navigate to URL (when address bar is focused)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <div class="callout-label">Tip</div>
+          On macOS, use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd> for all shortcuts above.
+        </div>
+      </div>
+    </details>
+
+    <!-- ═══════════ 9. KNOWN LIMITATIONS ═══════════ -->
+    <details id="limitations">
+      <summary>Known Limitations</summary>
+      <div class="section-body">
+        <p>Servo is an actively developing browser engine. Some web platform features that major browsers support are not yet implemented. This section documents what works, what partially works, and what is missing entirely.</p>
+
+        <h3>Media Playback</h3>
+        <div class="setting">
+          <div class="setting-name">Basic &lt;video&gt; and &lt;audio&gt; &mdash; Supported</div>
+          <p>Direct file playback works for MP4 (H.264), WebM (VP8/VP9), Ogg (Theora), Opus, MP3, FLAC, and WAV. Use a direct URL to a media file (e.g., <code>&lt;video src="video.mp4"&gt;</code>) and playback should work correctly.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Media Source Extensions (MSE) &mdash; Not Implemented</div>
+          <p>YouTube, Vimeo, Spotify, and most streaming sites use MSE (<code>MediaSource</code> API) for adaptive bitrate streaming. Without MSE, these sites cannot initialize their video players at all. This is the single largest gap for streaming site support.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Encrypted Media Extensions (EME/DRM) &mdash; Not Implemented</div>
+          <p>Content protected by Widevine DRM (YouTube Premium, Spotify, paid Vimeo content) cannot be decrypted or played. Unencrypted content from these platforms would work once MSE is implemented.</p>
+        </div>
+
+        <h3>APIs Used by Major Sites</h3>
+        <div class="setting">
+          <div class="setting-name">Web Animations API &mdash; Not Implemented</div>
+          <p><code>element.animate()</code>, <code>Animation</code>, <code>KeyframeEffect</code>, and <code>DocumentTimeline</code> are not available. YouTube and many modern sites use these for transitions and UI animations. CSS animations (<code>@keyframes</code>) work normally via the style system.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Cache API (CacheStorage) &mdash; Not Implemented</div>
+          <p><code>caches.open()</code>, <code>Cache.match()</code>, and <code>Cache.put()</code> are not available. Service Workers that depend on CacheStorage for offline caching or asset precaching will not function fully.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">Service Worker Fetch Interception &mdash; Partial</div>
+          <p>Service Workers can be registered, but <code>FetchEvent</code> does not include the <code>request</code> property or support <code>respondWith()</code>. Service Workers cannot intercept or modify network requests.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">navigator.mediaCapabilities &mdash; Not Implemented</div>
+          <p>The Media Capabilities API (<code>navigator.mediaCapabilities.decodingInfo()</code>) is not available. Sites that use it will fall back to <code>canPlayType()</code>, which works correctly.</p>
+        </div>
+
+        <div class="setting">
+          <div class="setting-name">User-Agent Client Hints &mdash; Not Implemented</div>
+          <p><code>navigator.userAgentData</code> is not available. Sites fall back to the standard <code>navigator.userAgent</code> string.</p>
+        </div>
+
+        <h3>YouTube &amp; Streaming Sites</h3>
+        <p>Due to the limitations above, YouTube and similar streaming sites will not play video. Here's what to expect:</p>
+        <ul>
+          <li><strong>YouTube</strong> &mdash; Set the User-Agent to Chrome via <code>servo:preferences</code> to avoid the "unsupported browser" page. The page layout will render with errors, but video playback requires MSE which is not yet implemented.</li>
+          <li><strong>Vimeo</strong> &mdash; Similar to YouTube; public (unencrypted) videos would work once MSE is implemented.</li>
+          <li><strong>Spotify</strong> &mdash; Requires both MSE and EME (DRM). Not functional.</li>
+        </ul>
+
+        <h3>What Does Work</h3>
+        <ul>
+          <li>Direct video/audio file playback (MP4, WebM, Ogg, MP3, FLAC, WAV)</li>
+          <li>HTML5 video controls (play, pause, seek, volume)</li>
+          <li>CSS animations and transitions</li>
+          <li>IndexedDB, IntersectionObserver, and Service Worker registration</li>
+          <li>WebGL 1.0 (WebGL 2.0 available as experimental pref)</li>
+          <li>All privacy features (content blocking, fingerprint protection, DoH, etc.)</li>
+        </ul>
+
+        <div class="callout">
+          <div class="callout-label">Tip</div>
+          For the best video experience, use sites that serve direct media files rather than adaptive streaming. HTML5 video test pages like the W3C Media Events page work well for verifying playback.
+        </div>
+      </div>
+    </details>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <div class="footer">
+      <p>Private Browser &middot; Built on Servo &middot; Mozilla Public License 2.0</p>
+    </div>
+
+  </div>
+</body>
+</html>
